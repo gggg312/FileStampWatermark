@@ -1,0 +1,26 @@
+{
+  "_说明": "任务类型：PDF 加水印。必改字段：① input = 用户提供的源文件夹路径（可为单个路径或数组：数组=多个文件夹一次处理，同类型任务一个 JSON）；② watermark.text = 用户要求的水印文字（不改则按'内部资料'输出，可能不符合用户要求）。水印文字支持多行：直接在 JSON 的 text 中用 \\n 换行（对话中直接回车换行亦可）。默认样式：透明度 30%、旋转 30°、居中、字号 fsToS=0.08（页面短边 8%，横竖页字号一致），用户不同意可逐项指定；全部字段含义见《智能体调用手册》第四节。修改后请另存为新的 .json 文件再调用，不要覆盖本模板。",
+  "task": "pdf-watermark",
+  "input": "D:\\请改为源文件夹路径",
+  "watermark": {
+    "text": "内部资料",
+    "fontName": "微软雅黑",
+    "colorArgb": -2147476961,
+    "opacity": 30,
+    "rotation": 30,
+    "align": 1,
+    "letterSpacing": 0,
+    "lineSpacing": 0,
+    "fontScale": 0.8,
+    "fsToS": 0.08,
+    "pos": "center"
+  },
+  "output": {
+    "dpi": 150,
+    "mark": "已处理V",
+    "pos": "after",
+    "seq": "num",
+    "pad": 1,
+    "ts": false
+  }
+}

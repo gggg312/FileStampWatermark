@@ -1,0 +1,13 @@
+<Window x:Class="PDFQFZ.WebShell.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="文件批量盖章与水印工具" Height="700" Width="1280" Icon="/PDFQFZ.WebShell;component/Assets/app.ico"
+        MinHeight="690" MinWidth="1220" WindowStartupLocation="CenterScreen"
+        AllowDrop="True" DragOver="Win_DragOver" Drop="Win_Drop">
+    <!-- V365：MinWidth=1374 = 左栏694 + 分隔条10 + 右栏670；V366：1380 = 右栏676（用户：最小宽度再增6px）；V371：1410 = 右栏706（用户：最小宽度再增30px） -->
+    <!-- V389：适配市面小屏幕（发布级）——初始 1280×700、Min 1220×690；前端内容最小宽=左栏536+分隔条10+右栏620=1166（+边框16≈1182），MinWidth 1220 兼容 1920×1080@150%（逻辑宽1280）与 1280×720@100%（工作区1240）；MinHeight 690 兼容 1366×768@100%（工作区728）与 1920×1080@150%（工作区693）；右栏 620 靠预览工具条等比缩放（CSS 变量 pt-scale，clamp 0.75~1）防遮挡，工具条不再靠右栏宽度撑场；旧 config 大尺寸由 FitWindowToScreen 压回工作区（下限=Min） -->
+    <Grid>
+        <wv2:WebView2 x:Name="webView"/>
+    </Grid>
+</Window>
