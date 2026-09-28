@@ -255,13 +255,15 @@ namespace PDFQFZ.WPF.Services
                             }
                             else if (effWz == 1)
                             {
+                                // V1.0.0.35：上=贴顶（iText y 向上，左下角 y = 页高-章高）；此前 yPos=0 贴底与预览相反
                                 xPos = (pWidth - imageW) * opt.WzPercent / 100;
-                                yPos = 0;
+                                yPos = pHeight - imageH;
                             }
                             else
                             {
+                                // V1.0.0.35：下=贴底（iText y 向上，左下角 y = 0）；此前 yPos=pHeight-imageH 贴顶与预览相反
                                 xPos = (pWidth - imageW) * opt.WzPercent / 100;
-                                yPos = pHeight - imageH;
+                                yPos = 0;
                             }
                             image.SetAbsolutePosition(xPos, yPos);
                             waterMarkContent.AddImage(image);
