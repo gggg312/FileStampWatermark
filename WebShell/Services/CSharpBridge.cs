@@ -70,6 +70,11 @@ namespace PDFQFZ.WebShell.Services
         // 命中直接复用 PNG 路径，免 PDFium 重渲染（翻回旧页卡顿主因）。换文档（OpenPdf/OpenDebugPage/ClosePdf）时清空。
         private readonly object _renderPageCacheLock = new object();
         private readonly Dictionary<string, string> _renderPageCache = new Dictionary<string, string>();
+        // V1.0.0.50：网格视图缩略图缓存（RenderGridPage）——key=文档路径|g|页序|dpi，value=RenderGridPage 完整 JSON；
+        // 独立于 _renderPageCache（不同 dpi 不同图，grid 用 72dpi 小图避免 8 张 144dpi 大图并发解码白屏）。
+        // 换文档（OpenPdf/OpenDebugPage/ClosePdf）时与 _renderPageCache 一并清空。
+        private readonly object _renderGridCacheLock = new object();
+        private readonly Dictionary<string, string> _renderGridCache = new Dictionary<string, string>();
         // V2.4.0.9：进程隔离标签——%TEMP% 共享路径（调试页/拖入临时文件）加 pid 后缀，
         // 旧版本残留进程与新版本共跑时不再互相锁文件/覆盖文件（调试页提取、拖入解析均受影响）
         private static readonly string _procTag = System.Diagnostics.Process.GetCurrentProcess().Id.ToString();

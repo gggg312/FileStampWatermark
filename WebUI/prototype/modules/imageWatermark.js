@@ -249,8 +249,8 @@ window.PdfqModules.imageWatermarkActions = {
                 window.Bridge.invoke('OpenPdfFromBytes', b64, f.name).then(function (json) {
                     let r = {}; try { r = JSON.parse(json); } catch (e) {}
                     if (r.ok) {
-                        self.opHint = '已加载 PDF：' + f.name;
-                        self.addLog('已加载 PDF：' + f.name, 'ok');
+                        self.opHint = '已加载 PDF：《' + f.name + '》'; /* V1.0.0.78：文件名《》包裹 */
+                        self.addLog('已加载 PDF：《' + f.name + '》', 'ok');
                     } else { self.addLog(r.error || 'PDF 加载失败', true); }
                 }, function () {});
             };
@@ -294,7 +294,7 @@ window.PdfqModules.imageWatermarkActions = {
                                 });
                             });
                         });
-                        self.opHint = '图片模式：' + r.name + '（' + r.total + ' 张中第 ' + (r.idx + 1) + ' 张）；水印设置与 PDF 一致';
+                        self.opHint = '图片模式：《' + r.name + '》（' + r.total + ' 张中第 ' + (r.idx + 1) + ' 张）；水印设置与 PDF 一致'; /* V1.0.0.78：文件名《》包裹 */
                     } else { self.opHint = r.error || '图片预览失败'; }
                 }, function () {});
             }, function () {});
@@ -416,8 +416,8 @@ window.PdfqModules.imageWatermarkActions = {
             var h = Math.max(0.04, Math.min(0.25, 61 / (_dispH || 768)));
             const p = {
                 text: '双击编辑文字', fontName: '微软雅黑', fontScale: 0.8, colorArgb: 0xFF1F2329,
-                opacity: 100, bold: false, italic: false, underline: false, strike: false,
-                letterSpacing: 0, lineSpacing: 0, align: 1, rotation: 0  // V277：默认对齐=中
+                opacity: 40, bold: false, italic: false, underline: false, strike: false,
+                letterSpacing: 0, lineSpacing: 0, align: 1, rotation: 35  // V1.0.0.46：新建框默认 35° / 不透明度 40（原 V277 默认对齐=中）
             };
             window.Bridge.invoke('AddWatermarkBox', 0, x, y, w, h, JSON.stringify(p)).then(function (json) {
                 let r = {}; try { r = JSON.parse(json); } catch (e) {}
@@ -450,6 +450,8 @@ window.PdfqModules.imageWatermarkActions = {
                                 window.Bridge.invoke('UpdateWatermarkBox', b.id, JSON.stringify(self.wmBoxToJson(b)));
                                 // V1.0.0.7: 新建框测宽后立即测换行快照（当前图 CSS 断行）；渲染/切图不再自动重测
                                 if (typeof self.wmCaptureWrapLines === 'function') { try { self.wmCaptureWrapLines(b); } catch (e) {} }
+                                // V1.0.0.42：添加水印框后自动进入编辑状态（无需再双击）
+                                self.wmDblEditStart(b);
                             }
                         }
                     });
@@ -479,6 +481,8 @@ window.PdfqModules.imageWatermarkActions = {
             if (!window.Bridge) return;
             if (!this.imgLoaded && this.imgQueue.length === 0) { this.opHint = '请先加载图片'; return; }
             const self = this;
+            /* V1.0.0.38：输出前统一 flush——编辑态文字/换行快照先写回（原路径连 b.text 都不写回，输出与预览不一致） */
+            if (typeof this.wmFlushBeforeGenerate === 'function') { try { this.wmFlushBeforeGenerate(); } catch (e) {} }
             let outDir = String(this.imgOutDir || '').trim();
             if (!outDir) {
                 // 默认当前图片所在目录（后端取队列首图目录）

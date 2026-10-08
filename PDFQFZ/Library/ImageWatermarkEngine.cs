@@ -23,9 +23,12 @@ namespace PDFQFZ.Library
     /// </summary>
     public static class ImageWatermarkEngine
     {
-        /// <summary>支持的图片扩展名（对齐 WPF ImageQueueManager.SupportedExtensions）。</summary>
+        /// <summary>支持的图片扩展名（对齐 WPF ImageQueueManager.SupportedExtensions）。
+        /// V1.0.0.37: 声明含 GIF/TIFF，但按单帧处理——动画 GIF 取首帧、多页 TIFF 取首页；如需多帧/多页支持请另行扩展。</summary>
         public static readonly string[] SupportedExtensions =
             { ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tif", ".tiff" };
+        /// <summary>V1.0.0.38：水印高频诊断日志开关（默认关；config.ini diagWatermark=1 时由壳层启动注入）。关时跳过逐行/逐框写盘 I/O。</summary>
+        public static bool DiagEnabled = false;
 
         public static bool IsSupported(string path)
         {
@@ -154,7 +157,7 @@ namespace PDFQFZ.Library
         /// <summary>V300: 公共换行算法（用 iTextSharp BaseFont.GetWidth，和 PDF 完全一样）。</summary>
         public static string WrapText(string text, float boxWpx, float fs, float letterSpacing, string fontName, bool bold, bool italic)
         {
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [C#-WRAP] textLen=" + (text==null?0:text.Length) + " boxWpx=" + boxWpx.ToString("F1") + " fs=" + fs.ToString("F1") + " ls=" + letterSpacing + " font=" + fontName + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [C#-WRAP] textLen=" + (text==null?0:text.Length) + " boxWpx=" + boxWpx.ToString("F1") + " fs=" + fs.ToString("F1") + " ls=" + letterSpacing + " font=" + fontName + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             if (string.IsNullOrEmpty(text) || boxWpx <= 0 || fs < 0.5f) return text ?? "";
             if (string.IsNullOrWhiteSpace(fontName)) fontName = "微软雅黑";
             FontStyle style = FontStyle.Regular;
@@ -200,16 +203,16 @@ namespace PDFQFZ.Library
         private static void DrawBox(Graphics g, WatermarkBox box, int imgW, int imgH)
         {
             if (box == null || imgW <= 0 || imgH <= 0) return;
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW] H0=" + box.H0 + " FsToS=" + box.FsToS + " H=" + box.H + " imgW=" + imgW + " imgH=" + imgH + " boxWpx=" + (imgW * box.W).ToString("F1") + " fs_calc=" + (box.FsToS > 0.0001f ? (box.FsToS * Math.Min(imgW, imgH)) : ((box.H0 > 0.01f ? (imgH * box.H0) : (imgH * box.H)) * (box.FontScale > 0.01f ? box.FontScale : 0.8f))).ToString("F1") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW] H0=" + box.H0 + " FsToS=" + box.FsToS + " H=" + box.H + " imgW=" + imgW + " imgH=" + imgH + " boxWpx=" + (imgW * box.W).ToString("F1") + " fs_calc=" + (box.FsToS > 0.0001f ? (box.FsToS * Math.Min(imgW, imgH)) : ((box.H0 > 0.01f ? (imgH * box.H0) : (imgH * box.H)) * (box.FontScale > 0.01f ? box.FontScale : 0.8f))).ToString("F1") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             string raw = box.Text ?? "";
             var lines = new List<string>();
             // V303: 快照方案——如果前端测量了换行结果，直接用，不再重新计算换行
             bool useWrapLines = (box.WrapLines != null && box.WrapLines.Count > 0);
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-WL] useWrapLines=" + useWrapLines + " wrapLines.Count=" + (box.WrapLines == null ? "null" : box.WrapLines.Count.ToString()) + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-WL] useWrapLines=" + useWrapLines + " wrapLines.Count=" + (box.WrapLines == null ? "null" : box.WrapLines.Count.ToString()) + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             if (useWrapLines)
             {
                 foreach (string l in box.WrapLines) if (!string.IsNullOrEmpty(l)) lines.Add(l);
-                try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-WL-USED] lines=" + lines.Count + " firstLine=" + (lines.Count > 0 ? lines[0].Substring(0, Math.Min(20, lines[0].Length)) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+                if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-WL-USED] lines=" + lines.Count + " firstLine=" + (lines.Count > 0 ? lines[0].Substring(0, Math.Min(20, lines[0].Length)) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             }
             else
             {
@@ -234,9 +237,10 @@ namespace PDFQFZ.Library
             FontStyle style = FontStyle.Regular;
             if (box.Bold) style |= FontStyle.Bold;
             if (box.Italic) style |= FontStyle.Italic;
-            Font measureFont = new Font(fontName, fs, style, GraphicsUnit.Pixel);
-            Bitmap bmp = new Bitmap(1, 1);
-            Graphics mg = Graphics.FromImage(bmp);
+            using (Font measureFont = new Font(fontName, fs, style, GraphicsUnit.Pixel))
+            using (Bitmap bmp = new Bitmap(1, 1))
+            using (Graphics mg = Graphics.FromImage(bmp))
+            {
             mg.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             // V1.0.0.6: 快照直接用（不再按本图校验重排）。快照=前端 CSS 换行结果，输出必须与前端预览一致；
             //          若后端按本图框宽校验快照（V405 做法），GDI 与 CSS 度量差异会把"前端一行"误判为放不下而重排换行（用户实测横图一行数字在竖图输出被换行）。
@@ -330,7 +334,7 @@ namespace PDFQFZ.Library
                             else if (box.Align == 2) lx = -halfFit + (fitWpx - lw);
                         }
                         float ly = firstTop + li * lineH;
-                        try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-LINE] li=" + li + " lw=" + lw.ToString("F1") + " lx=" + lx.ToString("F1") + " ly=" + ly.ToString("F1") + " boxWpx=" + boxWpx.ToString("F1") + " fs=" + fs.ToString("F1") + " fsToS=" + box.FsToS.ToString("F6") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+                        if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [IMG-DRAW-LINE] li=" + li + " lw=" + lw.ToString("F1") + " lx=" + lx.ToString("F1") + " ly=" + ly.ToString("F1") + " boxWpx=" + boxWpx.ToString("F1") + " fs=" + fs.ToString("F1") + " fsToS=" + box.FsToS.ToString("F6") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
                         // V322: 整行画文字（不用逐字符画，避免iTextSharp和GDI+字体度量不一致）
                         g.DrawString(line, font, tb, lx, ly, StringFormat.GenericTypographic);
                         if (box.Underline)
@@ -341,7 +345,7 @@ namespace PDFQFZ.Library
                 }
             }
             finally { g.Restore(st); }
-            mg.Dispose(); bmp.Dispose(); measureFont.Dispose();
+            }
         }
 
         private static float ClampF(float v, float lo, float hi)

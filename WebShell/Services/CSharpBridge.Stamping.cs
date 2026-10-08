@@ -133,6 +133,90 @@ namespace PDFQFZ.WebShell.Services
             }
             catch (Exception ex) { return "{\"ok\":false,\"error\":" + Json(ex.Message) + "}"; }
         }
+        /// <summary>V1.0.0.70：批量取多页印章——网格补载一次桥接返回全部页（不再逐页往返）；
+        /// small=1 走网格专用小图渲染（管线入口 scale=0.25，渲染+编码快约 16 倍），章图按内容指纹复用（同批同参只渲染一次）。</summary>
+        public string GetPageStampsBatch(string pagesJson, int small)
+        {
+            try
+            {
+                int[] pages = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<int[]>(pagesJson ?? "[]") ?? new int[0];
+                var result = new List<object>();
+                foreach (var page in pages)
+                {
+                    var list = new List<object>();
+                    foreach (var p in _stampPlacements.ForPage(_stampDocPath, page))
+                    {
+                        list.Add(RenderStampShared(p, small != 0));
+                    }
+                    result.Add(new Dictionary<string, object> { ["page"] = page, ["stamps"] = list });
+                }
+                return Json(result);
+            }
+            catch (Exception ex) { return "{\"ok\":false,\"error\":" + Json(ex.Message) + "}"; }
+        }
+        /// <summary>V1.0.0.70：章图内容指纹——影响渲染像素的全部参数（章文件+尺寸+透明度+旋转+去白容差+开关+纹理参数/种子）；
+        /// 位置/位移/页码不影响章图内容。同指纹章图像素相同 → 缓存文件复用（stamp_fp_&lt;hash&gt;.png）。</summary>
+        private static string StampContentKey(PDFQFZ.Library.StampPlacement p)
+        {
+            string fp;
+            try { fp = p.StampPath + "|" + new FileInfo(p.StampPath).Length + "|" + File.GetLastWriteTimeUtc(p.StampPath).Ticks; }
+            catch { fp = p.StampPath ?? ""; }
+            string s = string.Join("|", new string[] {
+                fp,
+                p.SizeMm.ToString(), p.Opacity.ToString(), p.Rotation.ToString(),
+                p.WhiteTransparencyTolerance.ToString(), p.UseWhiteTransparency.ToString(), p.UseOriginalRotationCrop.ToString(),
+                p.TextureEnabled.ToString(),
+                p.TextureSeed.ToString(), p.TextureBrightness.ToString(), p.TextureBlob.ToString(), p.TextureGradient.ToString(),
+                p.TextureWhite.ToString(), p.TextureSpot.ToString(), p.TextureRadial.ToString(), p.TextureCast.ToString(),
+                p.TextureKb.ToString("R"), p.TextureKblob.ToString("R"), p.TextureKgrad.ToString("R"),
+                p.TextureKwhite.ToString("R"), p.TextureKspot.ToString("R"), p.TextureKradial.ToString("R"), p.TextureKcast.ToString("R")
+            });
+            using (var sha = System.Security.Cryptography.SHA1.Create())
+            {
+                var b = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes(s));
+                return BitConverter.ToString(b).Replace("-", "").Substring(0, 16);
+            }
+        }
+        private static readonly Dictionary<string, (int w, int h)> _fpSizeCache = new Dictionary<string, (int w, int h)>();
+        /// <summary>V1.0.0.70：内容指纹复用渲染（网格批量用）——缓存文件存在即跳过渲染，返回引用 URL + 尺寸缓存。</summary>
+        private Dictionary<string, object> RenderStampShared(PDFQFZ.Library.StampPlacement placement, bool small)
+        {
+            string fp = StampContentKey(placement);
+            string fileName = "stamp_fp_" + fp + (small ? "_s.png" : ".png");
+            string outPath = Path.Combine(_renderCacheDir, fileName);
+            if (!File.Exists(outPath))
+            {
+                using (var bmp = PDFQFZ.WPF.Services.StampEngine.CreatePlacementBitmap(placement, small ? 0.25f : 1f))
+                {
+                    bmp.Save(outPath, System.Drawing.Imaging.ImageFormat.Png);
+                }
+            }
+            if (!_fpSizeCache.TryGetValue(fileName, out var wh))
+            {
+                using (var probe = new Bitmap(outPath)) { wh = (probe.Width, probe.Height); }
+                lock (_fpSizeCache) { _fpSizeCache[fileName] = wh; }
+            }
+            return new Dictionary<string, object>
+            {
+                ["ok"] = true,
+                ["id"] = placement.Id,
+                ["url"] = _cacheUrlPrefix + "/" + fileName,
+                ["imgW"] = wh.w,
+                ["imgH"] = wh.h,
+                ["sizeMm"] = placement.SizeMm,
+                ["x"] = placement.X,
+                ["y"] = placement.Y,
+                ["rotation"] = placement.Rotation,
+                ["randomRotation"] = placement.RandomRotation,
+                ["offsetX"] = placement.OffsetXmm,
+                ["offsetY"] = placement.OffsetYmm,
+                ["centerRatio"] = placement.CenterRatio,
+                ["batchId"] = placement.BatchId,
+                ["type"] = placement.Type,
+                ["keyword"] = placement.Keyword,
+                ["page"] = placement.Page
+            };
+        }
         /// <summary>把一枚印章渲染为缓存 PNG（对齐 WPF CreatePlacementBitmap：去白/透明度/纹理/旋转），返回叠加所需对象。</summary>
         private Dictionary<string, object> RenderStampToCache(PDFQFZ.Library.StampPlacement placement)
         {

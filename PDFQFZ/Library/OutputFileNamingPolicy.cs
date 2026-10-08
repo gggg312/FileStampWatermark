@@ -343,7 +343,8 @@ namespace PDFQFZ.Library
 
         public static string BuildSuccessMessage(string sourceFileName, string actualOutputPath)
         {
-            return "成功！“" + sourceFileName + "”盖章完成！输出文件名“" + Path.GetFileName(actualOutputPath) + "”";
+            // V1.0.0.78：文件名统一《》包裹（操作提示区 opHintHtml 将《》段渲染为黑色加粗；日志区同文案保持一致）
+            return "成功！《" + sourceFileName + "》盖章完成！输出文件名《" + Path.GetFileName(actualOutputPath) + "》";
         }
     }
 }

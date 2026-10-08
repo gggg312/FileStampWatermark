@@ -87,19 +87,54 @@ namespace PDFQFZ.Library
                 if (tmp <= 0) { startIndex += tmp; continue; }   // 该段无切片（对齐生成期：段内页不盖章）
 
                 int W = stampW, H = stampH;
-                int w1 = W / 3;                      // 首片宽（章宽/3，subImages）
-                int wMid = (W - w1) / tmp;           // 中间片宽（整数除法，subImages）
+                /* V1.0.0.68：均分切片（与生成端 subImages 一致——用户要求平均分布，不再首片 W/3 大、末片剩余大、中间小）；
+                   超长文档整数除法归 0 时保底 1px，源矩形钳制防越界
+                   V1.0.0.69：首页切片保底章宽/20——n≤20 均分天然满足；n>20 首页放大到 W/20 保证首页永远可见骑缝章，
+                   其余 n-1 片均分剩余宽（余数均匀分配到前几片，避免末片吸收余数偏大）；n==1 整章 */
+                if (tmp <= 1)
+                {
+                    // 单页段：整章（与生成端 subImages(n=1) 一致）；继续下一段不 return
+                    int page1 = qfzList[startIndex];
+                    float pW1, pH1;
+                    if (pageSize != null) { var ps1 = pageSize(page1); pW1 = ps1.W > 0 ? ps1.W : 595f; pH1 = ps1.H > 0 ? ps1.H : 842f; }
+                    else { pW1 = 595f; pH1 = 842f; }
+                    int rot1 = pageRotation != null ? Math.Max(0, pageRotation(page1)) : 0;
+                    bool rotLand1 = (rot1 == 90 || rot1 == 270);
+                    bool land1 = rotLand1 || (!rotLand1 && pW1 > pH1);
+                    int eff1 = land1 ? (wzType == 3 ? 0 : wzType == 0 ? 2 : wzType == 2 ? 1 : 3) : wzType;
+                    float dW1 = rotLand1 ? pH1 : pW1, dH1 = rotLand1 ? pW1 : pH1;
+                    bool rot1f = (eff1 == 0 || eff1 == 1);
+                    float sW1 = rot1f ? H * k : W * k;
+                    float sH1 = rot1f ? W * k : H * k;
+                    float xP1, yP1;
+                    if (eff1 == 3) { xP1 = dW1 - sW1; yP1 = (dH1 - sH1) * (100 - wzPercent) / 100f; }
+                    else if (eff1 == 2) { xP1 = 0f; yP1 = (dH1 - sH1) * (100 - wzPercent) / 100f; }
+                    else if (eff1 == 1) { xP1 = (dW1 - sW1) * wzPercent / 100f; yP1 = 0f; }
+                    else { xP1 = (dW1 - sW1) * wzPercent / 100f; yP1 = dH1 - sH1; }
+                    result.Add(new SeamSlice { Page = page1, X = Clamp01(xP1 / dW1), Y = Clamp01(yP1 / dH1), W = Clamp01(sW1 / dW1), H = Clamp01(sH1 / dH1), SrcX = 0f, SrcY = 0f, SrcW = 1f, SrcH = 1f, Rotated = rot1f });
+                    startIndex += tmp;
+                    continue;
+                }
+                int wAvg = W / tmp; if (wAvg < 1) wAvg = 1;
+                int nFirst = W / 20; if (nFirst < 1) nFirst = 1;
+                if (nFirst < wAvg) nFirst = wAvg;
+                if (nFirst > W) nFirst = W;
+                int wBase = (W - nFirst) / (tmp - 1); if (wBase < 1) wBase = 1;
+                int rem = (W - nFirst) - wBase * (tmp - 1);
                 int tmpw = W;                        // 剩余宽（自章右向左累计）
 
                 for (int y = 0; y < tmp; y++)
                 {
                     int page = qfzList[startIndex + y];
                     int sw;
-                    if (y == tmp - 1) sw = tmpw;         // 末片=剩余全部
-                    else if (y == 0) sw = w1;            // 首片=W/3
-                    else sw = wMid;
+                    if (y == 0) sw = nFirst;
+                    else sw = wBase + ((y - 1) < rem ? 1 : 0);
+                    if (sw > tmpw) sw = tmpw > 0 ? tmpw : 1;
 
                     float srcX = (float)(W - tmpw) / W;
+                    if (srcX < 0f) srcX = 0f;
+                    float srcXMax = (float)(W - sw) / W;
+                    if (srcX > srcXMax) srcX = srcXMax;
                     float srcW = (float)sw / W;
 
                     // 页面 pt 尺寸（生成期每页各自 GetPageSize）
@@ -117,11 +152,15 @@ namespace PDFQFZ.Library
 
                     // V1.0.0.32：横向页（rotation 90/270）骑缝章方向映射——与生成端 StampEngine 一致：
                     // 竖右→横下、竖下→横左、竖左→横上、竖上→横右；显示尺寸按旋转后交换宽高
+                    // V1.0.0.71：横向判定补"真横版"（rotation 0/180 且宽>高，MediaBox 本身就横向的页面），
+                    // 只认 rotation 时真横版不映射导致横页骑缝章也盖在右边（用户实测回归）；
+                    // 真横版显示宽边即 pW（不交换），旋转横版显示宽边=原始高（交换）
                     int rot = pageRotation != null ? Math.Max(0, pageRotation(page)) : 0;
-                    bool landscape = (rot == 90 || rot == 270);
+                    bool rotLand = (rot == 90 || rot == 270);
+                    bool landscape = rotLand || (!rotLand && pW > pH);
                     int effWz = landscape ? (wzType == 3 ? 0 : wzType == 0 ? 2 : wzType == 2 ? 1 : 3) : wzType;
-                    float dispW = landscape ? pH : pW;
-                    float dispH = landscape ? pW : pH;
+                    float dispW = rotLand ? pH : pW;
+                    float dispH = rotLand ? pW : pH;
 
                     // 目标尺寸（pt）：不旋转（effWz 2/3）w=sw*k、h=H*k；旋转（0/1）w=H*k、h=sw*k
                     bool rotated = (effWz == 0 || effWz == 1);

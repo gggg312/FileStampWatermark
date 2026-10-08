@@ -4,6 +4,17 @@
  */
 window.PdfqModules = window.PdfqModules || {};
 window.PdfqModules.stampActions = {
+    /* V1.0.0.57：无印章提示弹窗（盖章动作类：调用处 return 拦截；配置类：仅提示不拦截） */
+    noSealTip(msg){
+      try{ ElementPlus.ElMessageBox.alert(msg||'请先加载印章再操作。','提示',{confirmButtonText:'知道了',type:'warning',center:true}); }catch(e){ this.opHint='请先加载印章再操作'; }
+    },
+    /* V1.0.0.57：印章显示参数区无章一次性提示（避免连续微调参数时连环弹窗） */
+    sealParamNoSealTip(){
+      if(this.seals && this.seals.length){ return; }
+      if(this._sealParamWarned){ return; }
+      this._sealParamWarned=true;
+      this.noSealTip('当前未加载印章：可先设置印章显示参数，导入印章后参数将直接生效');
+    },
     onRandEnable(v){
       this.opHint=v?'随机角度位移已启用：盖章将进行随机的角度和位移变化；点击名称按钮调节参数':'随机角度位移已关闭';
       this.addLog(v?'随机角度位移已启用':'随机角度位移已关闭');
@@ -38,6 +49,7 @@ window.PdfqModules.stampActions = {
       this.rangeActive=false;
       if(!window.Bridge){ this.opHint='浏览器预览模式：请使用壳程序（EXE）'; return; }
       if(!this.pdfLoaded || this.debugActive){ this.opHint='请先加载 PDF 文件再放置印章'; return; }
+      if(!this.seals || !this.seals.length){ this.noSealTip('按文字盖章需要先加载印章'); return; } /* V1.0.0.57：无章弹窗拦截 */
       if(!this.searchText || !String(this.searchText).trim()){ this.opHint='请输入要识别的盖章文字'; return; }
       const self=this;
       if(this.dirMode && this.curFileList.length>1){
@@ -87,7 +99,7 @@ window.PdfqModules.stampActions = {
         const r=JSON.parse(json);
         if(r.ok){
           let okN=0; const errs=[];
-          (r.results||[]).forEach(function(x){ if(x.ok&&x.count>0){okN++;} else if(x.error){errs.push(x.file+'：'+x.error);} });
+          (r.results||[]).forEach(function(x){ if(x.ok&&x.count>0){okN++;} else if(x.error){errs.push('《'+x.file+'》：'+x.error);} }); /* V1.0.0.78：文件名《》包裹 */
           self.opHint='按文字盖章完成：'+okN+' 个文件已盖章'+(errs.length?('；失败 '+errs.length+' 个，如 '+errs.slice(0,2).join('；')):'')+'，详见下方日志';
           self.addLog('按文字盖章（全部文件）完成：'+okN+' 个文件已放置'+(errs.length?('；失败 '+errs.length+' 个：'+errs.join('；')):''),'ok');
           self.refreshPageStamps();
@@ -151,8 +163,18 @@ window.PdfqModules.stampActions = {
     previewBatchStamp(){
       this.rangeActive=false;
       if(!window.Bridge){ this.opHint='浏览器预览模式：请在壳程序（EXE）中使用'; return; }
-      if(!this.dirMode || !this.curFileList.length){ this.opHint='请先在【源文件】选择文件夹'; return; }
-      if(!this.curSeal){ this.opHint='请先选择印章'; this.addLog('请先选择印章',true); return; }
+      /* V1.0.0.57：按钮去 :disabled 后置灰态也可点击——此处统一拦截并提示 */
+      if(!this.dirMode || !this.curFileList.length){
+        if(!this.curFileList.length && !this.pdfLoaded){
+          this.opHint='请先在【源文件】选择 PDF 文件夹'; try{ ElementPlus.ElMessage.warning('批量放置印章需要先选择 PDF 文件夹'); }catch(e){}
+        } else {
+          this.opHint='批量放置印章仅对 PDF 文件夹生效；单 PDF 请使用「指定范围页批量盖章」功能';
+          try{ ElementPlus.ElMessage.warning('批量放置印章仅对 PDF 文件夹生效；单 PDF 请使用「指定范围页批量盖章」功能'); }catch(e){}
+        }
+        return;
+      }
+      if(!this.seals || !this.seals.length){ this.noSealTip('批量放置印章需要先加载印章'); return; } /* V1.0.0.57：无章弹窗拦截 */
+      if(!this.curSeal){ this.noSealTip('请先选择印章再操作'); return; } /* V1.0.0.57：有章未选中→弹窗提示（原 opHint 文案升级为弹窗） */
       const self=this;
       this.batchPreviewMode=true;
       this.opHint='正在按批量设置放置所有文件…';
@@ -170,7 +192,9 @@ window.PdfqModules.stampActions = {
     },
     /* V2.4.0.54：批量预览——按批量设置（页码范围/X/Y 百分比/钳制）在当前文件上显示盖章效果（内存预览不写文件）；
        骑缝章切片由 _seamSync 按印章参数卡设置显示；已预览过的文件直接复用，切换文件自动预览。 */
-    setSeamType(v){ const t=String(v); if(this.pageCount<=1 && t!=='1'){ this.opHint='单页文档无需骑缝章'; return; } /* V368：单页强制不加 */ this.seamType=t;
+    setSeamType(v){ const t=String(v); if(this.pageCount<=1 && t!=='1'){ this.opHint='单页文档无需骑缝章'; return; } /* V368：单页强制不加 */
+      if(t!=='1' && (!this.seals || !this.seals.length)){ this.noSealTip('骑缝章需要加载印章后才能生效：当前未加载印章，可先配置参数，导入印章后直接生效'); } /* V1.0.0.57：无章提示不拦截（配置类，可预先设置） */
+      this.seamType=t;
       if(t==='2'){ this.opHint='单页骑缝章：类似于双面打印正向盖章的效果，奇数页（1、3、5...）有骑缝章'; }
       else if(t==='3'){ this.opHint='双页骑缝章：类似于双面打印反向盖章的效果，偶数页（2、4、6...）有骑缝章'; }
       if(t!=='1' && !this.dirMode){ this.resetSegFromPage(); }
@@ -178,9 +202,31 @@ window.PdfqModules.stampActions = {
     },
     resetSegFromPage(){ if(this.pdfLoaded && this.pageCount>0){ this._segModified=false; this.segCount=this.pageCount; this.segAuto=true; } }, /* V368：选骑缝章类型后分割数默认自动 */
     onSegInput(){ this._segModified=true; },
-    /* V367：分割数一体控件（自动/数字）▲▼ 步进；PDF 文件夹模式（dirMode）锁死自动不可切换 */
-    segStepUp(){ if(this.pageCount<=1) return; /* V368：单页锁；文件夹不再锁（可切手动） */ this._segModified=true; if(this.segAuto){ this.segAuto=false; this.segCount=0; } else { this.segCount=Math.min(500, (parseInt(this.segCount)||0)+1); } },
-    segStepDown(){ if(this.pageCount<=1) return; /* V368：单页锁；文件夹不再锁 */ this._segModified=true; if(!this.segAuto){ if((parseInt(this.segCount)||0)<=0){ this.segAuto=true; } else { this.segCount=Math.max(0,(parseInt(this.segCount)||0)-1); } } },
+    /* V367：分割数一体控件（自动/数字）▲▼ 步进；PDF 文件夹模式（dirMode）锁死自动不可切换
+       V1.0.0.69：▲▼ 与手动输入统一同步 segDraft（输入框显示值）
+       V1.0.0.70：自动态点 ▲ 直接跳到 2（不再 0→1→2）；▼ 到 1 或以下回自动；自动态输入框可直接输入（输入即切手动）
+       V1.0.0.71：文件夹模式（dirMode）单页文件不锁（用户确认文件夹可输入）；segOnInput 无条件更新 segDraft——
+       受控 input 纯数字输入时原判断 s===raw 不更新受控值，导致"选中输入框无法输入数字"（用户实测回归） */
+    segStepUp(){ if(this.pageCount<=1 && !this.dirMode) return; /* 单页锁；文件夹不锁 */ this._segModified=true; if(this.segAuto){ this.segAuto=false; this.segCount=2; } else { this.segCount=Math.min(500, (parseInt(this.segCount)||0)+1); } this.segDraft=this.segAuto?'自动':String(this.segCount||0); },
+    segStepDown(){ if(this.pageCount<=1 && !this.dirMode) return; /* 单页锁；文件夹不锁 */ this._segModified=true; if(!this.segAuto){ if((parseInt(this.segCount)||0)<=1){ this.segAuto=true; } else { this.segCount=Math.max(0,(parseInt(this.segCount)||0)-1); } } this.segDraft=this.segAuto?'自动':String(this.segCount||0); },
+    /* V1.0.0.69：分割数手动输入——输入中只过滤非数字（不写 segCount 避免受控回写打断输入），失焦/回车提交时钳制 0..500 并写 segCount
+       V1.0.0.70：自动态输入数字自动切手动；commit 时 2~500 生效，0/1/清空恢复自动（0/1 无分割意义）
+       V1.0.0.71：无条件更新 segDraft（纯数字输入也要回写受控值，否则 input 显示不变） */
+    segOnInput(v){
+      if(this.pageCount<=1 && !this.dirMode){ return; }
+      if(this.segAuto){ this.segAuto=false; this.segCount=0; } /* 自动态输入 → 切手动 */
+      const raw=String(v==null?'':v);
+      const s=raw.replace(/[^\d]/g,'');
+      this.segDraft=s;
+    },
+    segOnCommit(v){
+      if(this.pageCount<=1 && !this.dirMode){ return; }
+      let n=parseInt(String(v||'').replace(/[^\d]/g,''),10);
+      if(!isFinite(n)||isNaN(n)){ n=0; }
+      if(n<2){ this.segAuto=true; this.segDraft='自动'; return; } /* 0/1/清空 → 恢复自动 */
+      if(n>500){ n=500; }
+      this._segModified=true; this.segCount=n; this.segDraft=String(n);
+    },
     searchHistorySuggest(queryString, cb){
       const q=(queryString||'').trim();
       cb(this.searchHistory.filter(h=>!q||h.indexOf(q)>=0).map(v=>({value:v})));
@@ -191,6 +237,7 @@ window.PdfqModules.stampActions = {
       if(window.Bridge&&window.Bridge.invoke){ window.Bridge.invoke('RemoveAutoStampKeyword',kw).then(function(){},function(){}); }
     },
     removeStamp(id){
+      if(this.wmEditMode){ return; } /* V1.0.0.54：水印编辑模式禁删除章子 */
       this.rangeActive=false;
       const self=this;
       let hit=null, inRight=false;
@@ -217,31 +264,36 @@ window.PdfqModules.stampActions = {
     },
     /* 批量删除弹窗选项：1=删除整个批次 2=删除当前页批次 3=取消 4=仅删除当前印章（按文字章多枚时显示） */
     refreshPageStamps(){
+      /* V1.0.0.48：网格视图透出章——章数据/参数变化时整体重载网格（已加载页章图全部过期，避免新旧章混排）；
+         注意 gridLoad 内部用 GetPageStamps 拉章、不走本函数，不会形成递归 */
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ this.gridPages=[]; this.gridStart=1; this.gridLoad(1); return; }
       if(!window.Bridge || !this.pdfLoaded){ return; }
       const self=this;
       // v2.4.0.52：后端章图 url 固定（stamp_{id}.png），SyncTextureParams 后 PNG 已重渲染但 img src 不变不重载 →
       // cache-bust 时间戳强制重载；Date.now()+随机数保证连续调参时 url 唯一。仅 refreshPageStamps 触发时加，不污染常渲染路径。
       const bust=function(url){ const t=Date.now()+'-'+(Math.random()*1e6|0); return url + (url.indexOf('?')>=0 ? '&' : '?') + 't=' + t; };
+      /* V1.0.0.53：双页右页章与左页并行拉取（原嵌套左页 .then 内——左页请求慢/失败时右页章永不拉取，且调用时右页 URL 未就绪则整体跳过；与 refreshPageWatermarks 右页分支同构） */
+      if(this.viewMode==='double' && this.pageRightUrl){
+        window.Bridge.invoke('GetPageStamps',Number(this.curPage)+1).then(function(j2){
+          let b=[]; try{ b=JSON.parse(j2); }catch(e){ return; }
+          if(Array.isArray(b)){ for(let i=0;i<b.length;i++){ if(b[i]&&b[i].url) b[i].url=bust(b[i].url); } }
+          self.pageStampsRight=Array.isArray(b)?b:[];
+        },function(){});
+      } else { this.pageStampsRight=[]; }
       window.Bridge.invoke('GetPageStamps',Number(this.curPage)||1).then(function(json){
         let a=[]; try{ a=JSON.parse(json); }catch(e){ return; }
         if(Array.isArray(a)){ self._diag('refreshPageStamps: 请求page='+(Number(self.curPage)||1)+' 后端返回章数='+a.length); for(let i=0;i<a.length;i++){ if(a[i]&&a[i].url) a[i].url=bust(a[i].url); } }
         self.pageStamps=Array.isArray(a)?a:[];
-        if(self.viewMode==='double' && self.pageRightUrl){
-          window.Bridge.invoke('GetPageStamps',Number(self.curPage)+1).then(function(j2){
-            let b=[]; try{ b=JSON.parse(j2); }catch(e){ return; }
-            if(Array.isArray(b)){ for(let i=0;i<b.length;i++){ if(b[i]&&b[i].url) b[i].url=bust(b[i].url); } }
-            self.pageStampsRight=Array.isArray(b)?b:[];
-          },function(){});
-        } else { self.pageStampsRight=[]; }
       },function(){});
     },
     onStageDown(e,side){
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ return; } /* V1.0.0.46 需求1：网格仅浏览，禁止落章/拖拽 */
       if(e.button===2){ return; }
       if(!window.Bridge || (!this.pdfLoaded && !this.imgMode)){ return; }
       // V100 问题1：文字水印与点击盖章互斥——水印开关开时，点预览区空白只取消水印选中，不盖章（水印框本身 @mousedown.stop 已隔离，点框正常选中）
       // V101：不清 wmEditingId——让 contenteditable blur 正常触发 wmDblEditEnd 保存（清了会导致元素销毁，ref 不存在，不保存）
       // V2.4.0.362：文启用时仅拦截"点击"（不盖章），放大视图拖拽（pan）照常——把拦截从 mousedown 移到 up 的未拖动分支
-      if(this.watermarkEnabled && this.wmEditingId){
+      if((this.wmEditMode||this.imgMode) && this.wmEditingId){ /* V1.0.0.54：水印编辑模式/图片模式才拦截编辑态 */
         // 主动退出编辑状态（触发 blur 保存内容）
         var ref = this.$refs["wmEdit-" + this.wmEditingId];
         var el = Array.isArray(ref) ? ref[ref.length-1] : ref;
@@ -281,7 +333,7 @@ window.PdfqModules.stampActions = {
         self._gesture=null;
         if(g.dragging){ return; } // V2.4.0.6：只要拖动过就不触发点击（双页禁拖且不误盖章，对齐 WPF 拖动防误盖章）
         // V2.4.0.362：文启用时点击空白 → 取消水印选中，不盖章（拖拽已在上方放行）
-        if(self.watermarkEnabled){ self.wmSelId=null; self.wmEditingId=null; return; }
+        if(self.wmEditMode || self.imgMode){ self.wmSelId=null; self.wmEditingId=null; return; } /* V1.0.0.54：仅编辑模式拦截点空白盖章（PDF 非编辑模式可正常盖章） */
         // V2.4.0.96：点击空白处若已选中文字水印框 → 先取消选中（不触发盖章）；水印框 mousedown.stop 已隔离互不干扰
         if(self.wmSelId){ self.wmSelId=null; self.wmEditingId=null; return; }
         // V2.4.0.15：放大视图也允许点击盖章（原实现 dragEnabled 时直接 return，导致放大视图点不了章）；
@@ -337,6 +389,7 @@ window.PdfqModules.stampActions = {
        位移<4px 判定单击 → 在章中心叠加盖章（保持"单击已有印章可叠加"原行为）。
        side=1 左页/单页、2 右页（双页视图）。章坐标按各自 centerRatio 语义换算，随机位移 offset 保持不动。 */
     stampDragStart(e,s,side){
+      if(this.wmEditMode){ return; } /* V1.0.0.54：水印编辑模式禁拖拽章子 */
       this.rangeActive=false;
       e.preventDefault(); e.stopPropagation();
       if(e.button!==0){ return; }

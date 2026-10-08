@@ -298,3 +298,7 @@ WebShell/Assets/公章.png
 WebShell/Assets/debug_page.pdf
 PDFQFZ.WPF/Assets/debug_page.pdf
 PDFQFZ.WPF/app_icon_raw.png
+
+# V1.0.0.51：版本备份目录/文件不入库（保留工作区供回退，防线上泄漏）
+.v*bak/
+*.v*bak

@@ -11,34 +11,104 @@ window.PdfqModules.uiLayout = {
       else { this.switchDirFile(); }
     },
     barPrev(){
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ const el=this.$refs.stage; if(el){ el.scrollTop=Math.max(0,el.scrollTop-320); this.gridOnScroll(); } return; } /* V1.0.0.46 需求1：网格滚轮替代翻页 */
       if(this.imgMode){ if(this.curImgIdx>0){ this.imgShow(this.curImgIdx-1); } }
       else { this.prevPage(); }
     },
     barNext(){
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ const el=this.$refs.stage; if(el){ el.scrollTop=Math.min(el.scrollHeight,el.scrollTop+320); this.gridOnScroll(); } return; } /* V1.0.0.46 需求1：网格滚轮替代翻页 */
       if(this.imgMode){ if(this.curImgIdx<this.imgQueue.length-1){ this.imgShow(this.curImgIdx+1); } }
       else { this.nextPage(); }
     },
     barGoPage(){
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ /* V1.0.0.56：网格页码跳转=目标页所在行整行置顶（已加载直接滚，未加载清空从行首重载）；页码以格子左上角页码为准
+        V1.0.0.61：滚动不再自动选中左上角页，跳转需显式 curPage=目标页（选中框跟随）；未加载分支设置 _gridScrollToPage 由 _gridDone 锚定定位（V60 加占位后原实现漏定位，目标行被占位压到视口下方） */
+        const v=Number(this.curPageInput); const total=this.pageCount||0;
+        if(!v||!total){ this.curPageInput=String(this.curPage||1); return; }
+        const t=Math.min(total,Math.max(1,v));
+        const cols=this.viewMode==='grid4'?4:8;
+        const rowStart=Math.floor((t-1)/cols)*cols+1; /* 目标页所在行行首：输入 20 → 17（20 保持行内原位置） */
+        const el=this.$refs.stage;
+        if(el && this.gridPages.some(function(g){return g.page===rowStart;})){ /* 目标行已加载：_gridLocate 定位（V1.0.0.63：非第一行居中，与切视图跳转一致） */
+          this.curPage=String(t); this.curPageInput=String(t); /* V1.0.0.61：显式选中目标页 */
+          this._gridJustLocated=true; setTimeout(function(){ this._gridJustLocated=false; }.bind(this),300); /* 跳转后 300ms 内 rAF 不覆盖页码输入框 */
+          this._gridLocate(rowStart);
+          this.gridOnScroll();
+          return;
+        }
+        /* 目标行未加载：清空重载（换新数组引用防旧链回写污染），从行首起首批即含目标行，滚回顶部；_gridScrollToPage 由 _gridDone 锚定定位 */
+        this.gridLoading=false; this.gridPages=[]; this.gridStart=1;
+        this.curPage=String(t); this.curPageInput=String(t); this._gridScrollToPage=rowStart;
+        this.gridLoad(rowStart);
+        if(el){ el.scrollTop=0; }
+        return;
+      }
       if(this.imgMode){
         const v=Number(this.imgPageInput);
         if(!this.imgLoaded || !this.imgQueue.length || !v){ this.imgPageInput=String((this.curImgIdx>=0?this.curImgIdx+1:0)); return; }
         this.imgShow(Math.max(0,Math.min(this.imgQueue.length-1,v-1)));
       } else { this.goPage(); }
     },
+    /* V1.0.0.57b：网格单击选中——选中框跟随单击页（curPage 同步，切回单页即该页；双击前先触发的 click 也设同页，无副作用） */
+    gridSelect(g){
+      if(!g || !g.page || g.failed){ return; }
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const p=Math.max(1,Math.min(this.pageCount,Number(g.page)||1));
+      this.curPage=String(p); this.curPageInput=String(p);
+    },
+    /* V1.0.0.57b：切回网格时刷新已加载页的水印预览（新加/修改的水印框在缓存页面上不可见问题）
+       V1.0.0.64：收敛刷新范围——只刷新当前选中页 curPage 与所在行（≤8 页），其余页水印由 _gridLoadOverlays 滚动懒加载刷新；
+       修复 4↔8 视图来回切换时对全部已加载页（≈64 页）无条件 GetPageWatermarks 调用、桥接队列积压致界面越切越卡 */
+    _gridRefreshWms(){
+      const self=this;
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const cols=this.viewMode==='grid4'?4:8;
+      const cur=Math.max(1,Number(this.curPage)||1);
+      const rowStart=Math.floor((cur-1)/cols)*cols+1; /* 当前选中页所在行行首 */
+      const todo=[];
+      const gps=this.gridPages||[];
+      for(let k=0;k<gps.length;k++){
+        const g=gps[k]; if(!g||g.failed){ continue; }
+        if(g.page===cur || (g.page>=rowStart && g.page<rowStart+cols)){ todo.push(g); } /* 当前页 + 所在行（≤8 页） */
+      }
+      if(!todo.length){ return; }
+      self._diag('gridRefreshWms: 收敛刷新 '+todo.length+' 页（cur='+cur+' row='+rowStart+'）');
+      todo.forEach(function(g){
+        try{
+          window.Bridge.invoke('GetPageWatermarks',g.page).then(function(j){
+            if(self.viewMode!=='grid4'&&self.viewMode!=='grid8'){ return; }
+            let a=[]; try{ a=JSON.parse(j); }catch(e){}
+            const cur2=self.gridPages.find(function(x){ return x.page===g.page; });
+            if(cur2){ cur2.wms=a; }
+          });
+        }catch(e){}
+      });
+    },
+    /* V1.0.0.56：网格双击格子 → 单页视图定位该页（与工具条"单页"按钮一致）
+       V1.0.0.57：先同步 curPage 再切视图——viewMode watch 会异步 renderPage(curPage) 且 renderPage 有"最新请求覆盖"守卫，
+       若双击后手动 renderPage(g.page) 会被 watch 后发的 renderPage(curPage=滚动同步的视口顶部页) 覆盖（双击跳 13 页根因）；
+       curPage 先设为目标页后，watch 渲染的即正确页 */
+    gridGoSingle(g){
+      if(!g || !g.page || !this.pdfLoaded){ return; }
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const p=Math.max(1,Math.min(this.pageCount,Number(g.page)||1));
+      this.curPage=String(p); this.curPageInput=String(p);
+      this.setView('single');
+    },
     barZoomIn(){
-      if(this.viewMode==='double'){ return; }  // v1.0.0.5：双页视图固定100%，禁止缩放
+      if(this.viewMode==='double'||this.viewMode==='grid4'||this.viewMode==='grid8'){ return; }  // v1.0.0.5：双页/4页/8页视图固定100%，禁止缩放
       this._zoomAnchor=true;
       this.zoomText=this.clampZoomText(Number(parseFloat(this.zoomText)||100)+25)+'%';
       if(this.imgMode){ this._fitImg(); } else { this.fitPage(); }
     },
     barZoomOut(){
-      if(this.viewMode==='double'){ return; }  // v1.0.0.5：双页视图固定100%，禁止缩放
+      if(this.viewMode==='double'||this.viewMode==='grid4'||this.viewMode==='grid8'){ return; }  // v1.0.0.5：双页/4页/8页视图固定100%，禁止缩放
       this._zoomAnchor=true;
       this.zoomText=this.clampZoomText(Number(parseFloat(this.zoomText)||100)-25)+'%';
       if(this.imgMode){ this._fitImg(); } else { this.fitPage(); }
     },
     barClampZoom(){
-      if(this.viewMode==='double'){ return; }  // v1.0.0.5：双页视图固定100%，禁止缩放
+      if(this.viewMode==='double'||this.viewMode==='grid4'||this.viewMode==='grid8'){ return; }  // v1.0.0.5：双页/4页/8页视图固定100%，禁止缩放
       this._zoomAnchor=true;
       this.zoomText=this.clampZoomText(parseFloat(this.zoomText)||100)+'%';
       if(this.imgMode){ this._fitImg(); } else { this.fitPage(); }
@@ -51,10 +121,429 @@ window.PdfqModules.uiLayout = {
     },
     setView(v){
       this.rangeActive=false;
-      // V346：图片模式不支持双页（按钮置灰 + 逻辑防御）
-      if(v==='double' && this.imgMode){ return; }
-      if(v==='double' && this.debugActive){ this.opHint='请先加载 PDF 文件后再进行双页视图'; return; }
+      // V346：图片模式不支持双页（按钮置灰 + 逻辑防御）；V1.0.0.46 需求1：多页下拉含双页/4页/8页，grid 同受 imgMode/debug 限制
+      const multi=v==='double'||v==='grid4'||v==='grid8';
+      if(multi && this.imgMode){ return; }
+      if(multi && this.debugActive){ this.opHint='请先加载 PDF 文件后再进行多页视图'; return; }
+      if(v==='grid4'||v==='grid8'){ /* V1.0.0.57：终止旧加载链+复位 loading，保留 gridPages/gridStart 缓存（返回网格可回看前面页，由 viewMode watch 定位当前行）；V1.0.0.60：同时终止向前补载链；V1.0.0.65：gridLoadingPrev（原名 _gridLoadingPrev 带 _ 前缀 Vue3 不代理） */ this._gridSeq++; this.gridLoading=false; this._gridSeqPrev++; this.gridLoadingPrev=false; this._prevItems=[]; this._gridObsInit(); this._gridResizeInit(); }
+      else { this._gridObsDestroy(); this._gridResizeDestroy(); }
       this.viewMode=v;
+    },
+    /* V1.0.0.46 需求1：多页下拉命令入口 */
+    gridViewPick(c){ this.setView(c); },
+    /* V1.0.0.49：4/8 页网格懒加载（列数×2 页/批，串行渲染防乱序；滚到接近底部自动加载下一批）
+       49 修复：①批尺寸降半降低首屏渲染压力（原列数×4，8页=32页/批易卡死）；②invoke 超时兜底（WebView2 调用卡住时强制跳页，
+       防 gridLoading 永真白屏）；③全程 _diag 打点（复现时读日志定位卡点/异常）；④按页拉水印框（GetPageWatermarks，与章一致，不再复制当前页框） */
+    gridLoad(start){
+      if(!this.pdfLoaded || (this.viewMode!=='grid4'&&this.viewMode!=='grid8')){ return; }
+      if(this.gridLoading){ return; }
+      const total=this.pageCount||0; if(!total){ return; }
+      const batch=32; /* V1.0.0.61：批量渲染 32 页/批（RenderGridPageBatch 一次 invoke，WebView2 往返 32→1，千页滚动连续加载不露底） */
+      const raw=Number(start)||1; /* V1.0.0.51：原始页码超界直接返回——修复 Math.min 钳制致越界拦截永不生效（第9页无限重复加载） */
+      if(raw>total){ return; }
+      const s=Math.max(1,Math.min(total,raw));
+      const self=this; const seq=++this._gridSeq; this.gridLoading=true; self._gridRetry=[]; /* V1.0.0.51：本批失败页重试列表 */
+self._gridEnd=Math.min(total,s+batch-1); /* V1.0.0.52：记录本批末页——批次收尾用 end+1 续载，修复 _gridDone 推到 pageCount+1 致后续批次永不触发（4页视图10页缺9/10） */
+      self._diag('gridLoad: view='+this.viewMode+' s='+s+' batch='+batch+' total='+total+' seq='+seq);
+      /* V1.0.0.49：invoke 超时兜底——卡住/慢返回时标记超时并只 resolve 一次（正常传结果、异常/超时传 null），外层统一走一次 next，避免双重 next 跳页错乱 */
+      const withTimeout=function(promise,ms,mark){
+        return new Promise(function(resolve){
+          let done=false;
+          const timer=setTimeout(function(){ if(!done){ done=true; mark.timedOut=true; } resolve(null); },ms);
+          promise.then(function(v){ if(!done){ done=true; clearTimeout(timer); } resolve(v); },
+            function(){ if(!done){ done=true; clearTimeout(timer); } resolve(null); });
+        });
+      };
+      /* V1.0.0.61：批量渲染——一次 invoke 32 页；整批超时/失败 → 整批 failed 占位（不逐页重试，避免 32×2 串行卡死）；单页失败 → 进 _gridRetry 单页重试 */
+      const m1={timedOut:false};
+      const pushFailed=function(a,b){ for(let k=a;k<=b;k++){ if(!self.gridPages.some(function(x){return x.page===k;})){ self.gridPages.push({page:k,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); } } };
+      try{
+        withTimeout(window.Bridge.invoke('RenderGridPageBatch',s-1,batch,72),15000,m1).then(function(json){
+          if(seq!==self._gridSeq){ self._diag('gridLoad: 批量返回但链已失效，终止'); return; }
+          if(m1.timedOut){ self._diag('gridLoad: 批量渲染超时，'+batch+' 页整批占位'); pushFailed(s,self._gridEnd); self._gridDone(seq); return; }
+          let r={}; try{ r=JSON.parse(json); }catch(e){ r={}; self._diag('gridLoad: 批量 JSON 解析失败，整批占位'); }
+          if(!r || !r.ok){ self._diag('gridLoad: 批量渲染失败：'+(r&&r.error?r.error:'未知')+'，整批占位'); pushFailed(s,self._gridEnd); self._gridDone(seq); return; }
+          const items=r.items||[];
+          self._diag('gridLoad: 批量返回 '+items.length+' 页');
+          for(let k=0;k<items.length;k++){
+            const it=items[k]; if(!it){ continue; }
+            const pg=Number(it.page)||0; if(pg<1){ continue; }
+            if(self.gridPages.some(function(x){return x.page===pg;})){ continue; } /* V1.0.0.51：按页去重防御 */
+            if(!it.ok){ self._diag('gridLoad: 页'+pg+' 渲染失败：'+(it.error||'未知')+'，待单页重试'); self._gridRetry.push(pg); continue; }
+            self.gridPages.push({page:pg,url:it.url+'?v='+(++self._imgSeq),stamps:[],wms:[],ptW:it.ptW||(it.w/2),ptH:it.ptH||(it.h/2),ovLoaded:false,ovStampsLoaded:false}); /* V1.0.0.60：ovLoaded 标记浮层已拉取（视口懒加载去重） */
+          }
+          self._diag('gridLoad: 批量完成，实入 '+(items.length-(self._gridRetry.length))+' 页');
+          if(self._gridRetry.length){ self._diag('gridLoad: 批次完成，待补 '+self._gridRetry.length+' 页'); self._gridRetryNext(seq); return; }
+          self._gridDone(seq);
+        },function(){
+          if(seq!==self._gridSeq){ return; }
+          self._diag('gridLoad: 批量 invoke 异常，整批占位');
+          pushFailed(s,self._gridEnd); self._gridDone(seq);
+        });
+      }catch(e){ if(seq!==self._gridSeq){ return; } self._diag('gridLoad: 批量链异常：'+e.message+'，整批占位'); pushFailed(s,self._gridEnd); self._gridDone(seq); }
+    },
+    /* V1.0.0.51：批次收尾——失败页已补齐或无需补齐时置完成态并打渲染校验点 */
+    _gridDone(seq){
+      const self=this; if(seq!==this._gridSeq){ self._diag('gridDone: 链已失效，终止'); return; } self.gridLoading=false; self.gridStart=(self._gridEnd||0)+1; /* V1.0.0.52：按本批末页续载（原 pageCount+1 跳过未加载批次——4页视图10页缺9/10 根因） */
+      self._diag('gridLoad: 批次完成 gridLoading=false gridStart='+self.gridStart);
+      self.$nextTick(function(){
+        try{ var _n=self.$refs.stage?self.$refs.stage.querySelectorAll('.grid-cell').length:0; self._diag('gridLoad: 界面已渲染 grid-cell='+_n+' / gridPages='+self.gridPages.length); }catch(e){ self._diag('gridLoad: 渲染检查异常：'+e.message); }
+        /* V1.0.0.53：批次完成后若网格未填满视口——哨兵在视口内不越界不回调、gridOnScroll 需滚动到底才触发，首批后无人续载（4页视图10页只显示前8页根因）；主动续载直到填满视口或全部加载完。上百页首批 2 行通常已超视口高度，不触发，滚动懒加载保留 */
+        if(self.gridStart<=self.pageCount){
+          try{
+            const _st=self.$refs.stage;
+            if(!_st || _st.scrollHeight<=_st.clientHeight+10){ self._diag('gridLoad: 网格未填满视口，主动续载 gridStart='+self.gridStart); self.gridTryLoadNext(); }
+          }catch(e){ self._diag('gridLoad: 续载检查异常：'+e.message); }
+        }
+        /* V1.0.0.57：切回网格补载目标行完成后滚动定位（viewMode watch 设置 _gridScrollToPage）；未找到且未加载完→主动续载下一批等定位（修复任意窗口高度下目标行滚不到顶、选中框停留首页）；已全部加载完仍找不到则放弃，避免死循环
+           V1.0.0.60：定位后 _gridJustLocated 锁定 curPage（选中框停留当前页，滚动同步 300ms 内不覆盖到视口顶部页）；并触发视口懒加载补章/水印
+           V1.0.0.61：定位改 _gridLocate——锚定场景（目标行=当前加载段第一行）直接滚到 gridTopPad（占位高度=目标行前偏移，绝对可靠，不受差值法 scrollTop 旧值/异步重排影响），150ms 二次校正；定位后主动向前补载一批（用户向上滚立即可见前面页，不再是大片空白占位） */
+        if(self._gridScrollToPage>0){
+          try{
+            const locPage=self._gridScrollToPage;
+            if(typeof self._gridLocate==='function'){ self._gridLocate(locPage); }
+            self._gridScrollToPage=0;
+            if(typeof self.gridOnScroll==='function'){ self.gridOnScroll(); }
+            if(typeof self._gridLoadOverlays==='function'){ self._gridLoadOverlays(locPage); } /* V1.0.0.65：锚定行 ±32 页预载章/水印（选中行上下先渲染一部分） */
+            if(typeof self.gridLoadPrev==='function'){ self.gridLoadPrev(); } /* V1.0.0.61：锚定后主动补前面 32 页（批量一次），向前滚动不露白 */
+          }catch(e){ self._diag('gridLoad: 定位滚动异常：'+e.message); self._gridScrollToPage=0; }
+        }
+        /* V1.0.0.77：批次完成后统一刷新虚拟化窗口（数据更新→占位替换为真实格；窗口内未加载区触发向下/向前补载判定） */
+        try{ if(typeof self.gridOnScroll==='function'){ self.gridOnScroll(); } }catch(e){ self._diag('gridLoad: 刷新窗口异常：'+e.message); }
+      });
+    },
+    /* V1.0.0.63：网格目标行两步定位——①纯计算粗定位（V1.0.0.77：虚拟化后容器高度恒定=全文档，目标行绝对偏移=targetRow×行高，不再依赖 gridTopPad/相对行偏移）；
+       ②布局稳定+目标格图片就绪后 getBoundingClientRect 差值精校准；居中规则：非文档第一行时目标行在视口垂直居中（第一行保持置顶）；
+       _gridJustLocated 锁 curPage 300ms，150ms 二次校正防异步重排 */
+    _gridLocate(locPage){
+      const self=this;
+      const el=self.$refs.stage; if(!el){ return; }
+      const cols=self.viewMode==='grid4'?4:8;
+      const gp=self.gridPages||[]; if(!gp.length){ return; }
+      const targetRow=Math.floor((locPage-1)/cols);
+      /* 第一步：纯计算粗定位（同步）——行高统一估算（A4 高宽比+gap），精确且不依赖 DOM/图片加载 */
+      const rowPitch=self._gridRowH(); /* V1.0.0.77：统一行高（原 gridTopPad+相对行偏移——虚拟化后直接 targetRow×rowH） */
+      const vh=el.clientHeight||0;
+      let top=Math.max(0, targetRow*rowPitch);
+      if(targetRow>0 && vh>rowPitch){ top=Math.max(0, top-(vh-rowPitch)/2); } /* 居中（文档第一行保持置顶） */
+      el.scrollTop=Math.max(0,top);
+      if(typeof self.gridOnScroll==='function'){ try{ self.gridOnScroll(); }catch(e){} } /* V1.0.0.77：程序化设置 scrollTop 不触发 @scroll，主动刷新虚拟化窗口使目标行渲染（第二步精校准依赖 DOM） */
+      /* 第二步：布局稳定+目标格图片就绪后差值精校准（固定格高下微调估算偏差） */
+      self.$nextTick(function(){
+        const el2=self.$refs.stage; if(!el2){ return; }
+        const c=el2.querySelector('.grid-cell[data-page="'+locPage+'"]');
+        if(!c){ return; }
+        const refine=function(){
+          const el3=self.$refs.stage; if(!el3){ return; }
+          const sr=el3.getBoundingClientRect(), cr=c.getBoundingClientRect();
+          const vh2=el3.clientHeight||0, rh=c.offsetHeight||0;
+          let d=cr.top-sr.top;
+          if(targetRow>0 && vh2>rh){ d-=(vh2-rh)/2; }
+          el3.scrollTop=Math.max(0,el3.scrollTop+d);
+        };
+        const img=c.querySelector('img.page-img');
+        if(img && !img.complete){
+          const timer=setTimeout(function(){ clearTimeout(timer); refine(); },500); /* 图片超时兜底 */
+          img.addEventListener('load',function(){ clearTimeout(timer); refine(); },{once:true});
+        } else { refine(); }
+      });
+      self._gridJustLocated=true;
+      setTimeout(function(){ self._gridJustLocated=false; },300);
+      setTimeout(function(){
+        if(!self._gridJustLocated){ return; } /* 用户已手动滚动，不拉回视口 */
+        const el4=self.$refs.stage; if(!el4){ return; }
+        const c4=el4.querySelector('.grid-cell[data-page="'+locPage+'"]');
+        if(c4){
+          const sr4=el4.getBoundingClientRect(), cr4=c4.getBoundingClientRect();
+          const vh4=el4.clientHeight||0, rh4=c4.offsetHeight||0;
+          let d4=cr4.top-sr4.top;
+          if(targetRow>0 && vh4>rh4){ d4-=(vh4-rh4)/2; }
+          d4=Math.round(d4);
+          if(d4>1||d4<-1){ el4.scrollTop=Math.max(0,el4.scrollTop+d4); }
+        }
+      },150);
+    },
+    /* V1.0.0.51：失败/超时页自动重试（最多 2 次，5s 超时），仍失败 push '加载失败' 占位格——修复 grid 首开少渲染一页 */
+    _gridRetryNext(seq){
+      const self=this;
+      const list=self._gridRetry.slice(); self._gridRetry=[];
+      if(!list.length){ self._gridDone(seq); return; }
+      self._diag('gridLoad: 重试失败页 '+list.join(',')+'（共 '+list.length+' 页）');
+      const withTimeout=function(promise,ms,mark){ return new Promise(function(resolve){ let done=false; const timer=setTimeout(function(){ if(!done){ done=true; mark.timedOut=true; } resolve(null); },ms); promise.then(function(v){ if(!done){ done=true; clearTimeout(timer); } resolve(v); }, function(){ if(!done){ done=true; clearTimeout(timer); } resolve(null); }); }); };
+      const one=function(i,remain,next){
+        if(seq!==self._gridSeq){ return; }
+        if(self.gridPages.some(function(x){return x.page===i;})){ next(); return; }
+        self._diag('gridLoad: 重试第 '+i+' 页开始');
+        const m1={timedOut:false};
+        try{
+          withTimeout(window.Bridge.invoke('RenderGridPage',i-1,72),5000,m1).then(function(json){
+            if(m1.timedOut){ if(seq!==self._gridSeq){ return; } if(remain>1){ self._diag('gridLoad: 页'+i+' 重试超时，再试'); one(i,remain-1,next); } else { self._diag('gridLoad: 页'+i+' 重试仍超时，占位'); self.gridPages.push({page:i,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); next(); } return; }
+            if(seq!==self._gridSeq){ return; }
+            let r={}; try{ r=JSON.parse(json); }catch(e){ r={}; }
+            if(!r||!r.ok){ if(seq!==self._gridSeq){ return; } if(remain>1){ self._diag('gridLoad: 页'+i+' 重试失败，再试'); one(i,remain-1,next); } else { self._diag('gridLoad: 页'+i+' 重试仍失败，占位'); self.gridPages.push({page:i,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); next(); } return; }
+            const item={page:i,url:r.url+'?v='+(++self._imgSeq),stamps:[],wms:[],ptW:r.ptW||(r.w/2),ptH:r.ptH||(r.h/2),ovLoaded:false,ovStampsLoaded:false}; /* V1.0.0.60：浮层由 _gridLoadOverlays 懒加载 */
+            self.gridPages.push(item); self._diag('gridLoad: 重试页'+i+' 图片完成');
+            next();
+          },function(){ if(seq!==self._gridSeq){ return; } if(remain>1){ one(i,remain-1,next); } else { self.gridPages.push({page:i,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); next(); } });
+        }catch(e){ if(remain>1){ one(i,remain-1,next); } else { self.gridPages.push({page:i,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); next(); } }
+      };
+      const go=function(k){ if(k>=list.length){ self._gridDone(); return; } one(list[k],2,function(){ go(k+1); }); };
+      go(0);
+    },
+    /* V1.0.0.50：grid 单元格图片加载失败打点（定位 grid 白屏的图片加载路径） */
+    gridImgErr(ev,g){ try{ this._diag('gridImgErr: 页'+(g&&g.page)+' 图片加载失败 url='+String((g&&g.url)||'').substring(0,80)); }catch(e){} },
+    /* V1.0.0.51：IntersectionObserver 哨兵无限滚动（浏览器原生标准无限滚动模式）——替代 scroll 高频计算，根治已加载完仍反复触发 */
+    gridTryLoadNext(){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      if(this.gridLoading){ return; }
+      if(this.gridStart>this.pageCount){ return; }
+      this.gridLoad(this.gridStart);
+    },
+    /* V1.0.0.77：哨兵 IntersectionObserver 移除——页级虚拟化后向下/向前补载由 gridOnScroll 窗口计算精确触发（不依赖底部哨兵 DOM 位置）；保留空壳防 setView 引用报错 */
+    _gridObsInit(){},
+    _gridObsDestroy(){},
+    /* V1.0.0.53：grid 视图窗口/分隔条改变预览区尺寸——浮层样式调 gridCellW() 直接读 DOM 格宽（非响应式），resize 不触发 Vue 重渲染，章/水印/骑缝章停留在旧格宽状态；用 ResizeObserver 观察 stage 递增响应式 gridCellTick 驱动浮层重渲染（对齐单/双页 imgW/imgW2 响应式链，浏览器原生 API 不自写算法） */
+    _gridResizeInit(){
+      const self=this;
+      if(self._gridRo || typeof ResizeObserver==='undefined'){ return; }
+      const stage=self.$refs.stage; if(!stage){ return; }
+      try{
+        self._gridRo=new ResizeObserver(function(){ self.gridCellTick=(self.gridCellTick||0)+1; self._gridResizeLocate(); });
+        self._gridRo.observe(stage);
+        self._diag('gridResize: stage 尺寸监听已建立');
+      }catch(e){ self._diag('gridResize init 异常：'+e.message); }
+    },
+    /* V1.0.0.65：窗口/预览区 resize 后选中页所在行重新居中（格宽变化致行高变化、选中行漂移出视口；与切视图同 _gridLocate 两步定位；150ms 防抖） */
+    _gridResizeLocate(){
+      const self=this;
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const cur=Math.max(1,Number(this.curPage)||1);
+      const cols=this.viewMode==='grid4'?4:8;
+      const rowStart=Math.floor((cur-1)/cols)*cols+1;
+      if(!this.gridPages.some(function(g){ return g.page===rowStart; })){ return; } /* 选中行未加载不定位（首次进入等 gridLoad 完成由 _gridDone 定位） */
+      if(self._gridResizeTimer){ clearTimeout(self._gridResizeTimer); }
+      self._gridResizeTimer=setTimeout(function(){ self._gridResizeTimer=0; self._gridLocate(rowStart); },150);
+    },
+    _gridResizeDestroy(){ if(this._gridRo){ try{ this._gridRo.disconnect(); }catch(e){} this._gridRo=null; } },
+    /* V1.0.0.77：网格滚动主逻辑（A+B+C 重构）——
+       ① C 窗口更新：gridWinTopRow/gridWinRows 响应式驱动模板只渲染视口±2 屏行（页级虚拟化，DOM 恒定 ≤120）；
+       ② A 向前补载判定修正：窗口顶行（±2 屏缓冲）触及 gridPages[0] 所在行才补——原 cr.top-sr.top<600 对上方远处格恒成立
+         （格子顶<容器顶差值恒负）→ 75 秒一口气补完千页 DOM 爆炸根因；守卫 page>1 + gridLoadingPrev 锁；
+       ③ 向下补载：窗口底行+2 屏进入未加载区（gridStart 范围内）即 gridLoad（替代哨兵，更精确）；
+       ④ B 章子/水印补载与滚动解耦：滚动停止 300ms 后才补视口±1 屏（不再滚动中逐批追着加载，插入由 Vue 随行渲染）；
+       滚动事件 rAF 节流保留 */
+    gridOnScroll(){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const el=this.$refs.stage; if(!el){ return; }
+      const self=this;
+      /* B：滚动停止 300ms 后补章/水印（防抖；切视图/锚定/加载完成直接调用 _gridLoadOverlays 不走此路） */
+      if(self._gridOvTimer){ clearTimeout(self._gridOvTimer); }
+      self._gridOvTimer=setTimeout(function(){
+        self._gridOvTimer=0;
+        if(self.viewMode==='grid4'||self.viewMode==='grid8'){ try{ self._gridLoadOverlays(); }catch(e){} }
+      },300);
+      if(!self._gridTopRaf){
+        self._gridTopRaf=requestAnimationFrame(function(){
+          self._gridTopRaf=0;
+          try{
+            const cols=self.viewMode==='grid4'?4:8;
+            const rowH=self._gridRowH();
+            const st=el.scrollTop||0, vh=el.clientHeight||0;
+            const topRow=Math.max(0, Math.floor(st/rowH));
+            const visRows=Math.max(1, Math.ceil(vh/rowH));
+            /* C：窗口更新——滚动位置/尺寸变化时只重渲染窗口±2 屏行（范围外 DOM 由 Vue 移除，gridPages 数据保留） */
+            if(self.gridWinTopRow!==topRow || self.gridWinRows!==visRows){ self.gridWinTopRow=topRow; self.gridWinRows=visRows; }
+            const gp=self.gridPages||[];
+            /* A：向前补载（修正判定）——gridPages[0] 所在行进入窗口顶行-2 屏内才补；补载锁防递归（完成后由 _finishPrev 延迟 100ms 复查） */
+            if(gp.length && gp[0].page>1 && !self.gridLoadingPrev){
+              const row0=Math.floor((gp[0].page-1)/cols);
+              if(topRow-2<=row0){ self.gridLoadPrev(); }
+            }
+            /* 向下补载：窗口底行+2 屏进入未加载区（gridStart 范围内）即加载——提前 2 屏预载，连续滚动不露底 */
+            if(self.gridStart>0 && self.gridStart<=self.pageCount && !self.gridLoading){
+              const needPage=Math.min(self.pageCount, (topRow+visRows+3)*cols);
+              if(self.gridStart<=needPage){ self.gridLoad(self.gridStart); }
+            }
+          }catch(e){}
+        });
+      }
+    },
+    /* V1.0.0.77：网格章/水印浮层补载——虚拟化后视口外无 DOM（不能 querySelector cell rect），改按页码窗口判定（视口±1 屏）；
+       B：滚动停止 300ms 后由 gridOnScroll 防抖触发（不再滚动中逐批追着加载）；切视图/锚定/加载完成场景直接调用（preloadAnchor=锚定行±32 页）；
+       数据写入 g.stamps/g.wms 后由 Vue 随行容器自动渲染/回收（与页同步，无需手动插 DOM） */
+    /* V1.1.0.2：切回网格时重置可视区章"已加载"标记（stamps 数据保留立即显示，随后由 _gridLoadOverlays 后台重拉最新章）——
+       覆盖"先切网格（拉空/被切走丢弃）→ 盖章 → 再切回网格"与"进放大视图后回网格"两类章丢失场景 */
+    _gridResetVisibleStamps(){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const el=this.$refs.stage; if(!el){ return; }
+      const cols=this.viewMode==='grid4'?4:8;
+      const rowH=this._gridRowH();
+      const st=el.scrollTop||0, vh=el.clientHeight||0;
+      const topRow=Math.max(0, Math.floor(st/rowH));
+      const visRows=Math.max(1, Math.ceil(vh/rowH));
+      const fromPage=Math.max(1,(topRow-1)*cols+1);
+      const toPage=Math.min(this.pageCount||0,(topRow+visRows+2)*cols);
+      const gps=this.gridPages||[];
+      for(let k=0;k<gps.length;k++){
+        const g=gps[k];
+        if(g && !g.failed && g.page>=fromPage && g.page<=toPage){ g.ovStampsLoaded=false; }
+      }
+    },
+    _gridLoadOverlays(preloadAnchor){
+      const self=this;
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      const el=this.$refs.stage; if(!el){ return; }
+      const cols=this.viewMode==='grid4'?4:8;
+      const rowH=this._gridRowH();
+      const st=el.scrollTop||0, vh=el.clientHeight||0;
+      const topRow=Math.max(0, Math.floor(st/rowH));
+      const visRows=Math.max(1, Math.ceil(vh/rowH));
+      const fromPage=Math.max(1, (topRow-1)*cols+1); /* 视口上 1 屏 */
+      const toPage=Math.min(this.pageCount||0, (topRow+visRows+2)*cols); /* 视口下 1 屏 */
+      const gps=this.gridPages||[];
+      const todo=[];
+      for(let k=0;k<gps.length;k++){
+        const g=gps[k];
+        if(!g || g.failed || (g.ovLoaded && g.ovStampsLoaded)){ continue; }
+        if(preloadAnchor){ /* 预载模式：锚定行 ±32 页 */
+          if(Math.abs(g.page-preloadAnchor)>32){ continue; }
+        } else {
+          if(g.page<fromPage || g.page>toPage){ continue; }
+        }
+        todo.push(g);
+      }
+      if(!todo.length){ return; }
+      self._diag('gridOverlays: '+(preloadAnchor?'锚定预载':'视口内')+'补章/水印 '+todo.length+' 页（'+todo[0].page+'..'+todo[todo.length-1].page+'）');
+      /* V1.0.0.70：章批量一次桥接（GetPageStampsBatch，small=1 网格专用小图 + 同批内容指纹复用），不再逐页 invoke；
+         水印数据是纯内存 JSON（轻量），保留逐页 8 并发 pump */
+      const stampsTodo=todo.filter(function(g){ return !g.ovStampsLoaded && !g._stampFetching; });
+      if(stampsTodo.length){
+        const pages=stampsTodo.map(function(g){ return g.page; });
+        /* V1.1.0.2：修复"切走视图后回网格章永久缺失"——不再"发起即置已加载"；
+           改用 _stampFetching 防并发；成功写入 g.stamps 后才置 ovStampsLoaded；
+           切走视图/失败/解析失败只复位 _stampFetching，下次切回网格或滚动到时自然重拉 */
+        stampsTodo.forEach(function(g){ g._stampFetching=true; });
+        const releaseFetch=function(){ for(let k=0;k<stampsTodo.length;k++){ stampsTodo[k]._stampFetching=false; } };
+        try{
+          window.Bridge.invoke('GetPageStampsBatch', JSON.stringify(pages), 1).then(function(j2){
+            if(self.viewMode!=='grid4'&&self.viewMode!=='grid8'){ releaseFetch(); return; }
+            let arr=[]; try{ arr=JSON.parse(j2); }catch(e){}
+            if(Array.isArray(arr)){
+              for(let k=0;k<arr.length;k++){
+                const it=arr[k]; if(!it) continue;
+                const g=gps.find(function(x){ return x.page===it.page; });
+                if(!g) continue;
+                const a=it.stamps||[];
+                for(let m=0;m<a.length;m++){ if(a[m]&&a[m].url){ a[m].url=a[m].url+'?v='+(++self._imgSeq); } }
+                g.stamps=a;
+                g.ovStampsLoaded=true; /* 成功写入后才算已加载 */
+              }
+            }
+            releaseFetch();
+          }).catch(function(){ releaseFetch(); });
+        }catch(e){ releaseFetch(); }
+      }
+      const wmTodo=todo.filter(function(g){ return !g.ovLoaded; });
+      if(wmTodo.length){
+        const MAXC=8; let idx=0;
+        const pump=function(){
+          if(idx>=wmTodo.length){ return; }
+          const g=wmTodo[idx++];
+          g.ovLoaded=true; /* 先置位防重复 */
+          try{
+            window.Bridge.invoke('GetPageWatermarks',g.page).then(function(j3){
+              if(self.viewMode!=='grid4'&&self.viewMode!=='grid8'){ return; }
+              let w=[]; try{ w=JSON.parse(j3); }catch(e){}
+              if(Array.isArray(w)){ g.wms=w; }
+            }).catch(function(){}).finally(function(){ pump(); });
+          }catch(e){ pump(); }
+        };
+        for(let c=0;c<MAXC;c++){ pump(); }
+      }
+    },
+    /* V1.0.0.60：向前补载——网格顶部占位区向上滚动时加载 gridPages 首页之前的一批（start..end 升序，收集后统一 unshift 插入头部保序）；
+       独立 _gridSeqPrev 链防与向下加载互扰；setView/切文档时终止
+       V1.0.0.61：改批量渲染——一次 invoke 32 页（RenderGridPageBatch），顶部补载不再逐页往返；锚定后由 _gridDone 主动触发一次，用户向上滚立即可见前面页 */
+    gridLoadPrev(fromPage){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return; }
+      if(this.gridLoadingPrev){ return; }
+      const batch=32;
+      let start,end,P=0; /* V1.0.0.66：P 提升到分支外声明——fromPage 分支原先只在 else 分支 const P，打点行引用 P 抛 ReferenceError（curPage>1 切网格必现），致 watch 中断、前段页永不补载且 gridLoadingPrev 恒 true */
+      if(fromPage){ /* V1.0.0.65：显式锚定起点（切视图未加载分支并行调用）——不依赖 gridPages[0]（首次加载时 gridPages 尚空，旧入口直接 return 致并行补载空转） */
+        P=fromPage; start=Math.max(1,fromPage-batch); end=fromPage-1;
+        if(end<start){ return; }
+      } else {
+        const gp=this.gridPages||[]; if(!gp.length){ return; }
+        P=gp[0].page||1; if(P<=1){ return; }
+        start=Math.max(1,P-batch), end=P-1;
+      }
+      const self=this; const seq=++this._gridSeqPrev; this.gridLoadingPrev=true; this._prevItems=[];
+      self._diag('gridLoadPrev: 向前补载 '+start+'..'+end+'（当前首页 '+P+'） seq='+seq);
+      const withTimeout=function(promise,ms,mark){ return new Promise(function(resolve){ let done=false; const timer=setTimeout(function(){ if(!done){ done=true; mark.timedOut=true; } resolve(null); },ms); promise.then(function(v){ if(!done){ done=true; clearTimeout(timer); } resolve(v); }, function(){ if(!done){ done=true; clearTimeout(timer); } resolve(null); }); }); };
+      const pushFailed=function(a,b){ for(let k=a;k<=b;k++){ if(!self.gridPages.some(function(x){return x.page===k;})){ self._prevItems.push({page:k,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); } } };
+      const m1={timedOut:false};
+      try{
+        withTimeout(window.Bridge.invoke('RenderGridPageBatch',start-1,batch,72),15000,m1).then(function(json){
+          if(seq!==self._gridSeqPrev){ return; }
+          if(m1.timedOut){ self._diag('gridLoadPrev: 批量超时，全部占位'); pushFailed(start,end); self._finishPrev(seq); return; }
+          let r={}; try{ r=JSON.parse(json); }catch(e){ r={}; self._diag('gridLoadPrev: 批量 JSON 解析失败，全部占位'); }
+          if(!r||!r.ok){ self._diag('gridLoadPrev: 批量失败：'+(r&&r.error?r.error:'未知')+'，全部占位'); pushFailed(start,end); self._finishPrev(seq); return; }
+          const items=r.items||[];
+          self._diag('gridLoadPrev: 批量返回 '+items.length+' 页');
+          for(let k=0;k<items.length;k++){
+            const it=items[k]; if(!it){ continue; }
+            const pg=Number(it.page)||0; if(pg<1){ continue; }
+            if(self.gridPages.some(function(x){return x.page===pg;})){ continue; } /* 与已加载重叠防御 */
+            if(!it.ok){ self._diag('gridLoadPrev: 页'+pg+' 失败，占位'); self._prevItems.push({page:pg,url:'',stamps:[],wms:[],ptW:0,ptH:0,failed:true,ovLoaded:true,ovStampsLoaded:true}); continue; }
+            self._prevItems.push({page:pg,url:it.url+'?v='+(++self._imgSeq),stamps:[],wms:[],ptW:it.ptW||(it.w/2),ptH:it.ptH||(it.h/2),ovLoaded:false,ovStampsLoaded:false}); /* 浮层待滚动到时懒加载 */
+          }
+          self._finishPrev(seq);
+        },function(){ if(seq!==self._gridSeqPrev){ return; } self._diag('gridLoadPrev: invoke 异常，全部占位'); pushFailed(start,end); self._finishPrev(seq); });
+      }catch(e){ if(seq!==self._gridSeqPrev){ return; } self._diag('gridLoadPrev: 链异常：'+e.message+'，全部占位'); pushFailed(start,end); self._finishPrev(seq); }
+    },
+    /* V1.0.0.60：向前补载收尾——按页码升序合并去重后统一插入头部（保序）
+       V1.0.0.61：不再补偿 scrollTop——插入头部页数与 gridTopPad 占位同步减少量相等（净高度不变），视口天然稳定；原补偿使视口向下跳变（V60 实测"本行在中间/向前滚动跳动"相关根因） */
+    _finishPrev(seq){
+      const self=this;
+      if(seq!==self._gridSeqPrev){ return; }
+      self.gridLoadingPrev=false;      const items=self._prevItems||[]; self._prevItems=[];
+      if(!items.length){ return; }
+      items.sort(function(a,b){ return a.page-b.page; });
+      const merged=items.concat(self.gridPages||[]);
+      const seen={}; const clean=[];
+      for(let k=0;k<merged.length;k++){ const p=merged[k].page; if(!seen[p]){ seen[p]=true; clean.push(merged[k]); } }
+      self.gridPages=clean;
+      self._diag('gridLoadPrev: 完成，插入 '+items.length+' 页（'+items[0].page+'..'+items[items.length-1].page+'）');
+      /* V1.0.0.77：①不再立即补章（B 解耦——新插入页 ovLoaded/ovStampsLoaded 保持 false，滚动停止 300ms 由 gridOnScroll 统一补视口±1 屏）；
+         ②延迟 100ms 复查滚动状态（A 补载完成后的延迟检查——gridLoadingPrev 已复位，若窗口仍触及边界则继续补载，防同步递归/漏补） */
+      setTimeout(function(){ try{ if(self.viewMode==='grid4'||self.viewMode==='grid8'){ self.gridOnScroll(); } }catch(e){} },100);
+    },
+    /* V1.0.0.48：网格单元格实际显示宽——章/水印浮层按格宽缩放（读首个已渲染格，失败回退与 gridCellStyle 相同的 CSS calc 公式） */
+    gridCellW(){
+      try{ const el=this.$refs.stage?this.$refs.stage.querySelector('.grid-cell'):null; if(el&&el.clientWidth>0){ return el.clientWidth; } }catch(e){}
+      const stage=this.$refs.stage; const sw=(stage&&stage.clientWidth)?(stage.clientWidth-48):780; /* V1.0.0.49：回退公式对齐 gridCellStyle CSS calc（含 .page-grid padding 12px + gap） */
+      return this.viewMode==='grid8' ? Math.max(40,(sw-96)/8) : Math.max(40,(sw-48)/4);
+    },
+    /* V1.0.0.72：纯计算格宽（不读 DOM）——gridCellStyle/gridTopPad 在 Vue 渲染期间同步调用，此时 DOM 仍是上一视图的格子宽（4↔8 互切时 gridCellW() 读到旧宽 → 高用旧宽×比例 → 4 页格子横向只显示上半部、8 页格子超长像两张拼；ResizeObserver 只监听 stage 不监听格宽，错误持续）。与 CSS calc 同款公式，宽高同源。 */
+    gridCellWCalc(){
+      const stage=this.$refs.stage;
+      const sw=(stage&&stage.clientWidth)?(stage.clientWidth-48):780;
+      return this.viewMode==='grid8' ? Math.max(40,(sw-96)/8) : Math.max(40,(sw-48)/4);
+    },
+    /* V1.0.0.77：网格统一行高（A4 高宽比×格宽+gap）——绝对定位行容器高度基准；gridTotalH/行定位/窗口计算同源，估算恒定（超高页 cap 在行内居中） */
+    _gridRowH(){
+      const w=this.gridCellWCalc();
+      return Math.round(w*1.414)+12;
+    },
+    /* V1.0.0.77：行容器绝对定位样式——top=行 index×行高，height=行高（cell 行内垂直居中，超高页不溢出） */
+    gridRowStyle(row){
+      const rh=this._gridRowH();
+      return {top:(Math.max(0,Number(row&&row.row)||0)*rh)+'px', height:rh+'px'};
+    },
+    /* V1.0.0.52：grid 水印字号按格宽重算（与预览同公式 wmCalcFontSize）——grid 浮层不能复用 wmFsMap 绝对 px 字号（相对格宽失真，4/8页视图水印大小与页面比例不符） */
+    gridWmFs(b, dispW, ptW, ptH) {
+      const dispH = dispW * ((ptH || 842) / (ptW || 595));
+      return this.wmCalcFontSize(b, dispW, dispH);
     },
     /* ---- 指定范围页（临时范围模式） / 按文字批量盖章 ---- */
     openRandDlg(){ this._openFloat('rand'); },
@@ -127,6 +616,9 @@ window.PdfqModules.uiLayout = {
     },
     openRangeDlg(){
       if(this.debugActive){ this.opHint='请先加载 PDF 文件后再进行范围盖章'; return; }
+      if(!this.seals || !this.seals.length){ if(typeof this.noSealTip==='function'){ this.noSealTip('指定范围页盖章需要先加载印章'); } return; } /* V1.0.0.57：无章弹窗拦截 */
+      /* V1.0.0.70：多页视图（4/8）下点范围页盖章先切回单页视图——范围盖章需在单页拖章定位，多页视图不可交互 */
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ this.setView('single'); }
       this.rangeFromN=1; this.rangeToN=this.pageCount||29;
       this.dlgRange=true;
       this.opHint='指定范围页盖章：输入起止页码，确定后进入范围模式';
@@ -136,15 +628,15 @@ window.PdfqModules.uiLayout = {
     /* ---- 阶段4：真实 PDF 渲染预览 ---- */
     pickPdf(){ if(!window.Bridge){ this.opHint='浏览器预览模式：无法打开文件选择，请在壳程序（EXE）中使用'; return; } const self=this; window.Bridge.invoke('PickPdf').then(function(path){ if(!path || path==='cancel' || !path.trim()){ return; } self.openDroppedPath(path); window.Bridge.invoke('ResetDirMode'); },function(e){ self.opHint='选择失败：'+e.message; }); },
     pickDir(){ if(!window.Bridge){ this.opHint='浏览器预览模式：无法打开文件夹选择，请在壳程序（EXE）中使用'; return; } const self=this; window.Bridge.invoke('PickSourceDir').then(function(json){ const r=JSON.parse(json); if(!r.ok){ if(!r.cancel){ self.opHint='打开文件夹失败：'+(r.error||''); self.addLog('打开文件夹失败：'+(r.error||''),true); } return; } if(r.path){ self.openDir(r.path); } else { self.applyDir(r); } },function(e){ self.opHint='选择文件夹失败：'+e.message; self.addLog('选择文件夹失败：'+e.message,true); }); },
-    applyDir(r){ const self=this; this._diag('applyDir入口: 清空前 pageStamps='+this.pageStamps.length+' pageStampsRight='+this.pageStampsRight.length+' seamAll='+this.seamAll.length+' seamBase='+(this.seamBase?this.seamBase.length:0)+' rangeActive='+this.rangeActive+' curFile='+this.curFile); this._userFileSeq++; this._userFileLoaded=true; this.dirMode=true; this.curFileList=(r.files||[]); this.curIdx=0; this.pageCount=r.pageCount||0; this.curFile=r.current||''; this.pdfLoaded=true; this.debugActive=false; this.viewMode='single'; this.batchPreviewMode=false; this.batchPreviewed=[]; this.pageStamps=[]; this.pageStampsRight=[]; this.seamAll=[]; this.seamBase=''; this._seamLastKey=''; this.curPage='1'; this.curPageInput='1'; this.imgMode=false; this.imgLoaded=false; this.curImgUrl=''; this.wmBoxesImg=[]; this.wmSelId=null; this.wmEditingId=null; // V2.4.0.347：加载 PDF 文件夹退出图片模式（对齐 openPdf L173 清理，修复先加载图片文件夹再拖入 PDF 文件夹时预览区仍显示图片） // V2.4.0.92：清空 seamAll 同步重置 _seamLastKey（换文档/重开强制重拉） v2.4.0.55：重新选文件夹清空预览态章/骑缝章切片/页码（后端 OpenDirectory 同步清章） // v2.4.0.54：重新选文件夹重置批量预览状态 // v2.4.0.36：新加载文件夹回单页视图
+    applyDir(r){ const self=this; this._diag('applyDir入口: 清空前 pageStamps='+this.pageStamps.length+' pageStampsRight='+this.pageStampsRight.length+' seamAll='+this.seamAll.length+' seamBase='+(this.seamBase?this.seamBase.length:0)+' rangeActive='+this.rangeActive+' curFile='+this.curFile); this._userFileSeq++; this._userFileLoaded=true; this.dirMode=true; this.curFileList=(r.files||[]); this.curIdx=0; this.pageCount=r.pageCount||0; this.curFile=r.current||''; this.pdfLoaded=true; this.debugActive=false; this.viewMode='single'; this.batchPreviewMode=false; this.batchPreviewed=[]; this.pageStamps=[]; this.pageStampsRight=[]; this.seamAll=[]; this.seamBase=''; this._seamLastKey=''; this.curPage='1'; this.curPageInput='1'; this.imgMode=false; this.imgLoaded=false; this.curImgUrl=''; this.wmBoxesImg=[]; this.wmSelId=null; this.wmEditingId=null; this.gridPages=[]; this.gridStart=1; this._gridScrollToPage=0; this._gridSeq++; this._gridSeqPrev++; this.gridLoadingPrev=false; this._prevItems=[]; this.gridLoading=false; /* V1.0.0.72：换文档同时终止向前补载链并复位 loading——旧文件补载结果不再插入新文件网格（上一文件含横向页时，其 ptW/ptH 残留会导致全竖版新文件格子按横向/错乱比例显示） */ // V2.4.0.347：加载 PDF 文件夹退出图片模式（对齐 openPdf L173 清理，修复先加载图片文件夹再拖入 PDF 文件夹时预览区仍显示图片） // V2.4.0.92：清空 seamAll 同步重置 _seamLastKey（换文档/重开强制重拉） v2.4.0.55：重新选文件夹清空预览态章/骑缝章切片/页码（后端 OpenDirectory 同步清章） // v2.4.0.54：重新选文件夹重置批量预览状态 // v2.4.0.36：新加载文件夹回单页视图
         if(!this.dirLocked){ let _src=(r.source||'').replace(/\\/g,'/'); if(!_src){ _src=(this.curFileList[0]||'').replace(/\\/g,'/'); _src=_src.substring(0,_src.lastIndexOf('/')); } if(_src){ this.saveDir=_src+'/已处理'; } } // V2.4.0.351：saveDir 锚定拖入目录(r.source) + 默认输出目录统一为已处理(与后端 V2.4.0.16 起一致,不再生成旧目录) this.segAuto=true; // v2.4.0.70：文件夹模式分割数默认「自动」（按每文件页数计算）
-        this.renderPage(1); this.refreshPageWatermarks(); const _c0=(r.current||'').replace(/\\/g,'/').split('/').pop(); this._diag('applyDir: 已清空预览态; 新文件='+(r.current||'')+' 共'+(r.files||[]).length+'个, 调renderPage(1)'); this.opHint='已加载文件夹：共 '+(r.files||[]).length+' 个 PDF，当前文件「'+_c0+'」'; this.addLog('已加载文件夹：共 '+(r.files||[]).length+' 个 PDF，当前「'+_c0+'」','ok'); this._seamSync(); // v2.4.0.70：加载文件夹后刷新骑缝章预览（V60 只清不刷，直接加载文件夹无骑缝章）
+        this.renderPage(1); this.refreshPageWatermarks(); const _c0=(r.current||'').replace(/\\/g,'/').split('/').pop(); this._diag('applyDir: 已清空预览态; 新文件='+(r.current||'')+' 共'+(r.files||[]).length+'个, 调renderPage(1)'); this.opHint='已加载文件夹：共 '+(r.files||[]).length+' 个 PDF，当前文件《'+_c0+'》'; this.addLog('已加载文件夹：共 '+(r.files||[]).length+' 个 PDF，当前《'+_c0+'》','ok'); this._seamSync(); // v2.4.0.70：加载文件夹后刷新骑缝章预览（V60 只清不刷，直接加载文件夹无骑缝章） /* V1.0.0.78：文件名《》包裹 */
       },
     switchDirFile(cb){
       this.rangeActive=false; const f=this.curFileList[this.curIdx]; if(f){ this.openPdf(f,true,cb); } },
     /* v2.4.0.36：多文件加载（Win32 OLE 拖放多文件，对齐 WPF LoadSourceFiles(files)）——非目录模式：文件列表可切换（工具栏下拉），saveDir=第一个文件所在目录 */
-    applyFiles(r){ const self=this; this._userFileSeq++; this._userFileLoaded=true; this.dirMode=false; this.curFileList=(r.files||[]); this.curIdx=0; this.pageCount=r.pageCount||0; this.curFile=r.current||''; this.pdfLoaded=true; this.debugActive=false; this.viewMode='single'; this.imgMode=false; this.imgLoaded=false; this.curImgUrl=''; this.wmBoxesImg=[]; this.wmSelId=null; this.wmEditingId=null; // V2.4.0.347：加载 PDF 退出图片模式（对齐 openPdf L173 清理，修复先加载图片再加载 PDF 时预览区仍显示图片）
-        if(!this.dirLocked){ const pp=(r.current||'').replace(/\\/g,'/'); const d=pp.substring(0,pp.lastIndexOf('/')); if(d){ this.saveDir=d; } } this.renderPage(1); this.refreshPageWatermarks(); this.opHint='已加载 '+(r.files||[]).length+' 个 PDF，当前文件「'+(r.current||'').replace(/\\/g,'/').split('/').pop()+'」'; this.addLog('已加载 '+(r.files||[]).length+' 个 PDF','ok'); },
+    applyFiles(r){ const self=this; this._userFileSeq++; this._userFileLoaded=true; this.dirMode=false; this.curFileList=(r.files||[]); this.curIdx=0; this.pageCount=r.pageCount||0; this.curFile=r.current||''; this.pdfLoaded=true; this.debugActive=false; this.viewMode='single'; this.imgMode=false; this.imgLoaded=false; this.curImgUrl=''; this.wmBoxesImg=[]; this.wmSelId=null; this.wmEditingId=null; this.gridPages=[]; this.gridStart=1; this._gridScrollToPage=0; this._gridSeq++; this._gridSeqPrev++; this.gridLoadingPrev=false; this._prevItems=[]; this.gridLoading=false; /* V1.0.0.72：同 applyDir——换文档终止向前补载链并复位 loading */
+        if(!this.dirLocked){ const pp=(r.current||'').replace(/\\/g,'/'); const d=pp.substring(0,pp.lastIndexOf('/')); if(d){ this.saveDir=d; } } this.renderPage(1); this.refreshPageWatermarks(); this.opHint='已加载 '+(r.files||[]).length+' 个 PDF，当前文件《'+(r.current||'').replace(/\\/g,'/').split('/').pop()+'》'; this.addLog('已加载 '+(r.files||[]).length+' 个 PDF','ok'); }, /* V1.0.0.79：文件名《》包裹 */
     openFiles(paths){ if(!window.Bridge){ this.opHint='浏览器预览模式：无法加载多文件，请在壳程序（EXE）中使用'; return; } const self=this; this.opHint='正在加载 '+(paths||[]).length+' 个文件…'; window.Bridge.invoke('OpenFiles',JSON.stringify(paths||[])).then(function(json){ let r={}; try{ r=JSON.parse(json); }catch(e){} if(r&&r.ok){ self.applyFiles(r); } else { self.opHint='打开文件失败：'+(r.error||''); self.addLog('打开文件失败：'+(r.error||''),true); } },function(e){ self.opHint='打开文件失败：'+e.message; self.addLog('打开文件失败：'+e.message,true); }); },
     /* v2.4.0.36：文件夹加载（选择文件夹/壳层拖入文件夹/file-dropped-dir 通道共用） */
     /* V2.4.0.98：文件夹含图片时按类型分流（纯图片→图片模式；混合→弹窗；纯 PDF→openDirPdf 原逻辑） */
@@ -174,9 +666,9 @@ window.PdfqModules.uiLayout = {
           if(!r.ok){ self.opHint='打开失败：'+(r.error||''); self.addLog('打开失败：'+(r.error||''),true); self._diag('openPdf ok=false: '+(r.error||'')); return; }
           self._diag('openPdf ok=true pageCount='+r.pageCount);
           self._userFileLoaded=true; self.pageCount=r.pageCount; self.curFile=path.replace(/\\/g,'/'); self.pdfLoaded=true; self.debugActive=false; self.viewMode='single';
-        self.imgMode=false; self.imgLoaded=false; self.curImgUrl=''; self.wmBoxesImg=[]; self.wmSelId=null; self.wmEditingId=null; // V2.4.0.97：加载 PDF 退出图片模式 // v2.4.0.36：新打开文件回单页视图（对齐用户"新拖入/打开文件应单页视图"）
+        self.imgMode=false; self.imgLoaded=false; self.curImgUrl=''; self.wmBoxesImg=[]; self.wmSelId=null; self.wmEditingId=null; self.gridPages=[]; self.gridStart=1; self._gridScrollToPage=0; self._gridSeq++; self._gridSeqPrev++; self.gridLoadingPrev=false; self._prevItems=[]; self.gridLoading=false; /* V1.0.0.72：同 applyDir——换文档（含目录内切换文件）终止向前补载链并复位 loading */ // V2.4.0.97：加载 PDF 退出图片模式 // v2.4.0.36：新打开文件回单页视图（对齐用户"新拖入/打开文件应单页视图"）
         // 骑缝章分割数随文档页数自动调整（对齐 WPF UpdateMaxSplitFromPdf：非目录模式且非"不加"时）
-        if(!self.dirMode && String(self.seamType)!=='1' && r.pageCount>0){ self._segModified=false; self.segCount=r.pageCount; } if(!self.dirMode && !self.dirLocked){ const pp=path.replace(/\\/g,'/'); const dir=pp.substring(0,pp.lastIndexOf('/')); if(dir){ self.saveDir=dir; } } self.renderPage(1); self._seamSync(); if(typeof self.refreshPageWatermarks === "function"){ self.refreshPageWatermarks(); } else { console.error("[WM-FATAL] refreshPageWatermarks 未注册！watermark.js 模块解析失败，请检查语法。"); self.addLog("[WM-FATAL] 水印模块解析失败，请刷新重试", true); } // V2.4.0.92：打开/切换文件后显式刷新骑缝章（修复换内容相同页数相同文件、同文件重开时 watcher 不触发导致预览不刷新）；V2.4.0.96：加载/切换文件后刷新水印框（后端已清空旧文档框） const _fn=(path.replace(/\\/g,'/').split('/').pop()||''); self.opHint='已加载 '+_fn; self.addLog('已加载文件：'+_fn+'（'+(r.pageCount||'?')+' 页）','ok'); self._diag('openPdf 成功渲染 page=1'); if(typeof cb==='function'){ try{ cb(); }catch(_e){ self._diag('openPdf cb异常: '+_e.message); } } // V2.4.0.54：批量预览模式下切换文件后自动按批量设置预览
+        if(!self.dirMode && String(self.seamType)!=='1' && r.pageCount>0){ self._segModified=false; self.segCount=r.pageCount; } if(!self.dirMode && !self.dirLocked){ const pp=path.replace(/\\/g,'/'); const dir=pp.substring(0,pp.lastIndexOf('/')); if(dir){ self.saveDir=dir; } } self.renderPage(1); self._seamSync(); if(typeof self.refreshPageWatermarks === "function"){ self.refreshPageWatermarks(); } else { console.error("[WM-FATAL] refreshPageWatermarks 未注册！watermark.js 模块解析失败，请检查语法。"); self.addLog("[WM-FATAL] 水印模块解析失败，请刷新重试", true); } // V2.4.0.92：打开/切换文件后显式刷新骑缝章（修复换内容相同页数相同文件、同文件重开时 watcher 不触发导致预览不刷新）；V2.4.0.96：加载/切换文件后刷新水印框（后端已清空旧文档框） const _fn=(path.replace(/\\/g,'/').split('/').pop()||''); self.opHint='已加载 《'+_fn+'》'; self.addLog('已加载文件：《'+_fn+'》（'+(r.pageCount||'?')+' 页）','ok'); /* V1.0.0.78：文件名《》包裹 */ self._diag('openPdf 成功渲染 page=1'); if(typeof cb==='function'){ try{ cb(); }catch(_e){ self._diag('openPdf cb异常: '+_e.message); } } // V2.4.0.54：批量预览模式下切换文件后自动按批量设置预览
         if(self.batchPreviewMode && self.dirMode){ self.doBatchPreview(); } }); };
         doOpen().catch(function(e){ self._diag('openPdf 超时/失败: '+String(e&&e.message||e)+' 重试一次'); self.opHint='打开超时，重试中…'; return doOpen(); }).catch(function(e2){ self.opHint='打开失败：'+String(e2&&e2.message||e2); self.addLog('打开失败：'+String(e2&&e2.message||e2),true); self._diag('openPdf 重试仍失败: '+String(e2&&e2.message||e2)); }); },
     renderPage(n){
@@ -202,6 +694,11 @@ window.PdfqModules.uiLayout = {
             if(seq!==self._renderSeq){ return; }
             const r2=JSON.parse(j2);
             if(r2.ok){ self.pageRightUrl=r2.url+'?v='+(++self._imgSeq); self.pageRightW=r2.ptW||(r2.w/2); self.pageRightH=r2.ptH||(r2.h/2); }
+            /* V1.0.0.49：右页基准就绪后重拉水印框——切双页时 viewMode 同步触发的 refreshPageWatermarks 早于右页异步渲染完成，
+               pageRightUrl 门控导致右页框丢失（仅左页有框）；此处右页 url 已就绪，重拉后右页框按页填充 */
+            if (typeof self.refreshPageWatermarks === 'function') { try { self.refreshPageWatermarks(); } catch (e) {} }
+            /* V1.0.0.53：右页 URL 就绪后补拉右页章——此前 L355 refreshPageStamps 调用时 pageRightUrl 未就绪、双页分支被门控跳过，右页章空（首次切双页右页只有水印缺章根因）；补调后右页分支并行拉取（见 stampActions.refreshPageStamps） */
+            if (typeof self.refreshPageStamps === 'function') { try { self.refreshPageStamps(); } catch (e) {} }
             self.fitPage();
             if (typeof self.wmRefitAllPages === 'function') { try { self.wmRefitAllPages(); } catch (e) {} } /* V1.0.0.19：右页基准就绪后整体重测 */
           });
@@ -217,6 +714,7 @@ window.PdfqModules.uiLayout = {
     //   仅放大视图调整 dragOfs；单页/双页缩放后复位 0（页面居中）；非主动缩放（resize/切页/切视图）不触发。标志每次 fitPage 末尾重置。
     fitPage(){
       if(!this.pdfLoaded){ return; }
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ return; } /* V1.0.0.46 需求1：网格布局由 gridLoad 自管 */
       const stage=this.$refs.stage;
       const sw=(stage&&stage.clientWidth)?(stage.clientWidth-36):780;
       const stageH=(stage&&stage.clientHeight)?(stage.clientHeight-36):600;
@@ -292,17 +790,18 @@ window.PdfqModules.uiLayout = {
       // 纯 PDF：继续原逻辑
       if(item&&item.webkitGetAsEntry){ try{ if(item.webkitGetAsEntry().isDirectory){ // v2.4.0.36：目录项若带 WebView2 真实路径（f.path）直接走文件夹加载；否则提示走「选择文件夹」
           const fd=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; const dp=(fd&&fd.path)||''; this._diag('drop=目录 isDirectory, f.path='+(dp||'(空)')); if(dp && /\\|[\/]/.test(dp)){ self._dropBusy=false; self.openDir(dp); return; }
-          this._dropBusy=false; this.opHint='拖入文件夹请点击「选择文件夹」按钮选择，或拖到窗口标题栏/边框区域（浏览器内容区无法直接获取文件夹路径）'; return; } }catch(err){} } const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(!f){ this._diag('drop失败: files[0]=null'); this._dropBusy=false; return; } this._diag('drop文件: name='+f.name+' path='+(f.path||'(无path)')+' size='+f.size); if(!/.pdf$/i.test(f.name)){ this._diag('drop拒绝: 非PDF'); this._dropBusy=false; this.opHint='仅支持 PDF 文件'; return; } if(f.size>30*1024*1024){ this._diag('drop拒绝: 超30MB'); this._dropBusy=false; this.opHint='文件较大（超过30MB），请用「选择」按钮打开'; return; } this._userFileSeq++; this.opHint='正在读取 '+f.name+' …';
+          this._dropBusy=false; this.opHint='拖入文件夹请点击「选择文件夹」按钮选择，或拖到窗口标题栏/边框区域（浏览器内容区无法直接获取文件夹路径）'; return; } }catch(err){} } const f=e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0]; if(!f){ this._diag('drop失败: files[0]=null'); this._dropBusy=false; return; } this._diag('drop文件: name='+f.name+' path='+(f.path||'(无path)')+' size='+f.size); if(!/.pdf$/i.test(f.name)){ this._diag('drop拒绝: 非PDF'); this._dropBusy=false; this.opHint='仅支持 PDF/图片文件'; return; } /* V1.0.0.83：纯PDF分支拒绝非PDF时文案补「图片」（图片拖入已在上方分流） */ if(f.size>30*1024*1024){ this._diag('drop拒绝: 超30MB'); this._dropBusy=false; this.opHint='文件较大（超过30MB），请用「选择」按钮打开'; return; } this._userFileSeq++; this.opHint='正在读取 《'+f.name+'》…'; /* V1.0.0.79：文件名《》包裹 */
         const doLoad=function(){ return f.arrayBuffer().then(function(buf){ const bytes=new Uint8Array(buf); let bin=''; for(let i=0;i<bytes.length;i+=0x8000){ bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+0x8000)); } const b64=btoa(bin); self._diag('arrayBuffer完成 size='+bytes.length+' 调OpenPdfFromBytes'); return self._callBridge('OpenPdfFromBytes',[b64,f.name],15000); }).then(function(json){ const r=JSON.parse(json); self._diag('OpenPdfFromBytes返回 ok='+r.ok+' pageCount='+r.pageCount+(r.error?(' err='+r.error):'')); if(!r.ok){ self._dropBusy=false; self.opHint='打开失败：'+(r.error||''); self.addLog('打开失败：'+(r.error||''),true); return; } self._userFileLoaded=true; self.pageCount=r.pageCount; self.curFile=(f.path||f.name||'').replace(/\\/g,'/'); self.pdfLoaded=true; self.debugActive=false; self.viewMode='single';
-        self.imgMode=false; self.imgLoaded=false; self.curImgUrl=''; self.wmBoxesImg=[]; self.wmSelId=null; self.wmEditingId=null; // V2.4.0.97：加载 PDF 退出图片模式 // v2.4.0.36：拖入新文件回单页视图
+        self.imgMode=false; self.imgLoaded=false; self.curImgUrl=''; self.wmBoxesImg=[]; self.wmSelId=null; self.wmEditingId=null; self.gridPages=[]; self.gridStart=1; self._gridScrollToPage=0; self._gridSeq++; self._gridSeqPrev++; self.gridLoadingPrev=false; self._prevItems=[]; self.gridLoading=false; /* V1.0.0.72：同 applyDir——拖入新文档终止向前补载链并复位 loading */ // V2.4.0.97：加载 PDF 退出图片模式 // v2.4.0.36：拖入新文件回单页视图
         self.segAuto=true; self._segModified=false; self.segCount=r.pageCount||1; // V368：拖入单文件默认分割数自动（切手动初始值=页数）
         // V2.4.0.15：拖入文件后自动填充保存目录为源文件所在目录（f.path 为 WebView2 提供的真实路径；未锁定输出目录时）
         if(!self.dirLocked){ const fp=f.path||''; if(fp){ const pp=fp.replace(/\\/g,'/'); const dir=pp.substring(0,pp.lastIndexOf('/')); if(dir){ self.saveDir=dir; } } }
-        self.opHint='已加载 '+f.name; self.addLog('已加载文件：'+f.name+'（'+(r.pageCount||'?')+' 页）','ok'); self._diag('加载成功 curFile='+self.curFile+' saveDir='+self.saveDir); self.renderPage(1); if(typeof self.refreshPageWatermarks === "function"){ self.refreshPageWatermarks(); } else { console.error("[WM-FATAL] refreshPageWatermarks 未注册！watermark.js 模块解析失败，请检查语法。"); self.addLog("[WM-FATAL] 水印模块解析失败，请刷新重试", true); } self._dropBusy=false; }); };
+        self.opHint='已加载 《'+f.name+'》'; self.addLog('已加载文件：《'+f.name+'》（'+(r.pageCount||'?')+' 页）','ok'); /* V1.0.0.79：文件名《》包裹 */ self._diag('加载成功 curFile='+self.curFile+' saveDir='+self.saveDir); self.renderPage(1); if(typeof self.refreshPageWatermarks === "function"){ self.refreshPageWatermarks(); } else { console.error("[WM-FATAL] refreshPageWatermarks 未注册！watermark.js 模块解析失败，请检查语法。"); self.addLog("[WM-FATAL] 水印模块解析失败，请刷新重试", true); } self._dropBusy=false; }); };
         doLoad().catch(function(err){ self._diag('drop超时/失败: '+String(err&&err.message||err)+' 重试一次'); self.opHint='打开超时，重试中…'; return doLoad(); }).catch(function(err){ self._diag('drop重试仍失败: '+String(err&&err.message||err)); self._dropBusy=false; self.opHint='拖入失败：'+err.message; self.addLog('拖入失败：'+err.message,true); }); },
     onStageWheel(e){
       // V346：图片/PDF 共用同一套滚轮逻辑——Ctrl+滚轮缩放、非放大滚轮翻页/翻图、放大视图滚动阅读（滚到底/顶翻下一/上一张）
-      // v1.0.0.5：双页视图固定100%，Ctrl+滚轮不缩放（走下方翻页）
+      // v1.0.0.5：双页视图固定100%，Ctrl+滚轮不缩放（走下方翻页）；V1.0.0.46 需求1：4/8 页网格仅浏览——滚轮原生滚动 stage，不缩放不翻页
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ return; }
       if(e.ctrlKey && this.viewMode!=='double'){ e.preventDefault(); const dz=e.deltaY<0?25:-25; this._zoomAnchor=true; this.zoomText=this.clampZoomText(Number(parseFloat(this.zoomText)||100)+dz)+'%'; if(this.imgMode){ this._fitImg(); } else { this.fitPage(); } return; }
       if(!this.pdfLoaded && !this.imgLoaded){ return; }
       e.preventDefault();
@@ -334,6 +833,7 @@ window.PdfqModules.uiLayout = {
           this.dragOfs={x:this.dragOfs.x, y:Math.max(0, this.dragOfs.y-delta)};
         }
       }
+      this.syncStageScroll(); /* V1.0.0.39: wheel sync scrollbars */
     },
     applyZoom(){ this._zoomAnchor=true; this.zoomText=this.clampZoomText(parseFloat(this.zoomText)||100)+'%'; this.fitPage(); },
     zoomIn(){ this._zoomAnchor=true; this.zoomText=this.clampZoomText(Number(parseFloat(this.zoomText)||100)+25)+'%'; this.fitPage(); },
@@ -362,8 +862,16 @@ window.PdfqModules.uiLayout = {
       this.opHint=this.isFullscreen?'全屏预览模式：鼠标移到顶部可展开预览工具，右上角「恢复」退出全屏':'已退出全屏预览';
       // V2.4.0.13：全屏切换改变预览区尺寸但窗口尺寸不变（resize 监听不触发）→ 主动重算适配
       // （修复双页视图点全屏后页面不自动放大、翻页后才放大的问题）
+      // V1.0.0.62：网格视图下全屏切换（左栏隐藏→预览区变宽）主动刷 gridCellTick + 重载章/水印浮层，防"全屏后预览不刷新/内容不显示"
       const self=this;
-      this.$nextTick(function(){ if(self.imgLoaded){ self.imgMeasure(); } else if(self.pdfLoaded){ self.fitPage(); } });
+      this.$nextTick(function(){
+        if(self.viewMode==='grid4'||self.viewMode==='grid8'){
+          self.gridCellTick=(self.gridCellTick||0)+1;
+          if(typeof self._gridRefreshWms==='function'){ try{ self._gridRefreshWms(); }catch(e){} }
+          if(typeof self._gridLoadOverlays==='function'){ try{ self._gridLoadOverlays(); }catch(e){} }
+        } else if(self.imgLoaded){ self.imgMeasure(); }
+        else if(self.pdfLoaded){ self.fitPage(); }
+      });
     },
     /* ---- 预览画布 ---- */
     measureLeftMin(){
@@ -387,7 +895,20 @@ window.PdfqModules.uiLayout = {
       const s=this.navState[key]; if(!s) return;
       const g=this._navCardMeta(key);
       if(!s.subs){
-        if(g && g.sw){ s.on=!this[g.sw]; if(key==='watermark'){ this.onWatermarkEnable(s.on); } else { this[g.sw]=s.on; } } /* V359：导航开/关水印同步 C# */
+        if(g && g.sw){
+          if(key==='watermark'){
+            /* V1.0.0.55：互斥双模式——导航「文」= 模式开关（与提示条按钮同语义）
+               ① 未启用水印（watermarkEnabled=false）：启用 + 进入水印模式（卡体出现+高亮）
+               ② 盖章模式（已启用、非编辑）：进入水印模式（卡体出现+高亮+网格自动切单页）
+               ③ 水印模式（编辑中）：退出水印模式（卡体消失+取消高亮，水印仍显示仍输出） */
+            if(!this.watermarkEnabled){ this.onWatermarkEnable(true); s.on=true; this._expandCard(key); }
+            else if(!this.wmEditMode){
+              this.wmEditMode=true; this.wmSect.main=true; s.on=true; this._expandCard(key);
+              if(this.viewMode==='grid4'||this.viewMode==='grid8'){ this.setView('single'); }
+            }
+            else { this.wmEditMode=false; this.wmSect.main=false; this.wmSelId=null; this.wmEditingId=null; s.on=false; }
+          } else { s.on=!this[g.sw]; this[g.sw]=s.on; }
+        }
         else { s.on=!s.on; }
         if(s.on) this._expandCard(key);
       }
@@ -519,7 +1040,10 @@ window.PdfqModules.uiLayout = {
       const s=this.navState[key]; if(!s) return 'off';
       const g=this._navCardMeta(key);
       if(!s.subs){
-        if(g && g.sw) return this[g.sw]?'on':'off';
+        if(g && g.sw){
+          if(key==='watermark'){ return (this.watermarkEnabled && this.wmEditMode)?'on':'off'; } /* V1.0.0.54：文卡高亮=水印已启用且正在编辑（退出编辑即不亮）；图片模式特判在前 */
+          return this[g.sw]?'on':'off';
+        }
         return s.on?'on':'off';
       }
       const keys=Object.keys(s.subs);

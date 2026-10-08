@@ -11,6 +11,8 @@ namespace PDFQFZ.Library
     internal class IniFileHelper
     {
         string strIniFilePath;  // ini配置文件路径
+        // V1.0.0.37：日志输出委托——解除 Library 对 WebShell 的编译期反向依赖（WPF/测试工程不注入则静默）
+        internal static Action<string> LogAction = null;
 
         // 返回0表示失败，非0为成功
         [DllImport("kernel32", CharSet = CharSet.Ansi)]
@@ -121,7 +123,7 @@ namespace PDFQFZ.Library
             var keyBuffer = new StringBuilder(bufferSize);
             long keyCount = GetPrivateProfileString(section, null, "", keyBuffer, bufferSize, strIniFilePath);
 
-            PDFQFZ.WebShell.Services.CSharpBridge.WriteLog("[WM-INI] GetAllSectionPairs section=" + section + " keyCount=" + keyCount + " keyBuffer=" + keyBuffer.ToString());
+            LogAction?.Invoke("[WM-INI] GetAllSectionPairs section=" + section + " keyCount=" + keyCount + " keyBuffer=" + keyBuffer.ToString());
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (keyCount <= 0) return result;           // 没有键，直接返回空集合
 

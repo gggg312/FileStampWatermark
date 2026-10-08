@@ -126,15 +126,9 @@
     <Compile Include="..\PDFQFZ\Library\AutoStampPositionCalculator.cs">
       <Link>Library\AutoStampPositionCalculator.cs</Link>
     </Compile>
-    <Compile Include="..\PDFQFZ.WPF\Services\StampEngine.cs">
-      <Link>Services\StampEngine.cs</Link>
-    </Compile>
-    <Compile Include="..\PDFQFZ.WPF\Services\StampBatchWorker.cs">
-      <Link>Services\StampBatchWorker.cs</Link>
-    </Compile>
-    <Compile Include="..\PDFQFZ.WPF\Services\StampBatchRequest.cs">
-      <Link>Services\StampBatchRequest.cs</Link>
-    </Compile>
+    <Compile Include="Services\StampEngine.cs" />
+    <Compile Include="Services\StampBatchWorker.cs" />
+    <Compile Include="Services\StampBatchRequest.cs" />
     <Compile Include="..\PDFQFZ\Library\OutputFileNamingPolicy.cs">
       <Link>Library\OutputFileNamingPolicy.cs</Link>
     </Compile>
@@ -193,6 +187,9 @@
     </EmbeddedResource>
     <EmbeddedResource Include="Docs\Templates\pdf-text-stamp.json">
       <LogicalName>PDFQFZ.WebShell.Docs.Templates.pdf-text-stamp.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\Templates\img-watermark.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.Templates.img-watermark.json</LogicalName>
     </EmbeddedResource>
     <!-- V1.0.0.27：智能体调用技能包（file-stamp-watermark），随软件释放到 运行组件\智能体调用\file-stamp-watermark\，
          用户无需单独下载/安装技能包，运行一次 EXE 即自动就位；智能体读取该技能包即可按技能工作流执行 -->

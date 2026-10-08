@@ -31,8 +31,8 @@
 | 盖哪些页 | 全部页 |
 | 盖章位置 | 居中（X/Y 50%） |
 | 骑缝章 | 不开启；开启时默认 类型=全部页、位置=右、位置百分比 50%（类型可选 全部页/奇数页/偶数页，位置可选 上/下/左/右，百分比 1-100%）；单页 PDF 无需骑缝章 |
-| 随机角度位移 | 不开启；开启默认 旋转 45°、横向位移 10mm、纵向位移 10mm |
-| 盖章渲染 | 不开启；开启默认 浓淡不均/径向压印/局部露白/内部斑点 15、斑点大小 5、渐变过渡 10、整体色偏 0 |
+| 随机角度位移 | 不开启；开启默认 旋转 30°、横向位移 10mm、纵向位移 10mm |
+| 盖章渲染 | 不开启；开启默认 浓淡不均/径向压印/局部露白/内部斑点 20、斑点大小 10、渐变过渡 10、整体色偏 0 |
 | 水印透明度 | 30% |
 | 水印旋转 | 30° |
 | 水印字号 | `fsToS=0.08`（页面/图片短边 8%，横竖页字号一致） |
@@ -49,11 +49,11 @@
 - `rotation`：旋转角度。不填时按该章已配置参数；填写才覆盖。
 - `opacity`：不透明度 0-100。不填时按该章已配置参数；填写才覆盖。
 - `randomParams`：是否开启**随机角度位移**（false/true，默认 false）。
-- `randomRotation`：开启时随机旋转角度范围（默认 45）。
+- `randomRotation`：开启时随机旋转角度范围（默认 30）。
 - `randomOffsetXMm` / `randomOffsetYMm`：开启时随机横向/纵向位移范围（mm，默认 10/10）。
 - `textureQuality`：是否开启**盖章渲染**（false/true，默认 false）。
-- `textureBrightness` / `textureRadial` / `textureWhite` / `textureSpot`：浓淡不均/径向压印/局部露白/内部斑点上限（开启时默认 15）。
-- `textureBlob`：斑点大小上限（默认 5）。
+- `textureBrightness` / `textureRadial` / `textureWhite` / `textureSpot`：浓淡不均/径向压印/局部露白/内部斑点上限（开启时默认 20）。
+- `textureBlob`：斑点大小上限（默认 10）。
 - `textureGradient`：渐变过渡上限（默认 10）。
 - `textureCast`：整体色偏上限（默认 0）。
 - `texturePresetIndex`：渲染方案（0 自定义，1-4 方案N）。

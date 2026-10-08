@@ -9,7 +9,7 @@
 <script src="lib/icons.iife.min.js"></script>
 <script>/* V2.4.0.402 收费功能开关统一由 vip.ini（运行组件\vip.ini，[vip] 节）经 C# GetUiConfig → applyUiConfig 下发：
  * enableTheme/themeColor → themeInit；badgeDebug → badgeInit。index.html 不再持有编译常量（避免覆盖 C# 下发值）。
- * 免费版无 vip.ini → enableTheme=false 固定蓝、badgeEnabled=false 只计数不渲染。</script>
+ * 免费版无 vip.ini → enableTheme=false 固定蓝、badgeEnabled=false 只计数不渲染。*/</script>
 <script src="bridge.js"></script>
 <script>/* V1.0.0.14：前端 JS 全局错误/未处理 Promise 拒绝 → 写入统一 app_log.log（经桥 LogLine），补前端异常回溯盲区 */
 window.addEventListener('error',function(e){ try{ if(window.Bridge&&window.Bridge.invoke){ window.Bridge.invoke('LogLine','[JS-ERROR] '+(e.message||'')+' @'+(e.filename||'')+':'+(e.lineno||'')); } }catch(_e){} });
@@ -229,6 +229,23 @@ button,input,select,textarea{font-family:inherit}
 .preview-page{position:relative;background:transparent;min-width:0;flex-shrink:0;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100% - 52px);margin-top:52px}
     .page-img{display:block;height:auto;box-shadow:0 2px 10px rgba(0,0,0,.12)} .page-wrap{position:relative;display:inline-block;line-height:0} .page-overlay{position:absolute;inset:0;pointer-events:none;line-height:0} .stamp-ov{position:absolute;pointer-events:auto;cursor:pointer;user-select:none} .seam-slice{position:absolute;pointer-events:none;background-repeat:no-repeat}
     .page-pair{display:flex;gap:12px;align-items:flex-start;justify-content:center}
+    /* V1.0.0.77 页级虚拟化：4/8 页网格浏览——容器高度恒定=全文档行数×行高（gridTotalH），绝对定位行容器（grid-row）只渲染视口±2 屏；
+       范围外移除 DOM 但 gridPages 数据全量保留；加载/回收不改变容器高度 → 滚动位置精确稳定、向前插入不跳 */
+    .page-grid{position:relative;width:100%;min-height:100%;padding:4px 6px 26px;box-sizing:border-box}
+    .grid-row{position:absolute;left:6px;right:6px;display:flex;justify-content:center;align-items:center;gap:12px}
+    .grid-cell{position:relative;flex:0 0 auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12);border-radius:2px;line-height:0;overflow:hidden;content-visibility:auto;contain-intrinsic-size:auto 300px} /* V1.0.0.51：上百页渲染优化——浏览器原生跳过离屏格渲染（content-visibility）；V1.0.0.60：格子固定高度（gridCellStyle(g) 按页 pt 比例），图片加载前后高度一致→rect 定位准确、滚动条稳定；overflow:hidden 防图片取整溢出 */
+    /* V1.0.0.57：网格悬停框+选中框（诱导双击进入单页）——悬停淡蓝框，选中（当前视口顶部页）主蓝实框 */
+    .grid-cell:hover{box-shadow:0 2px 10px rgba(0,0,0,.12),0 0 0 2px rgba(22,119,255,.55);box-shadow:0 2px 10px rgba(0,0,0,.12),0 0 0 2px color-mix(in srgb,var(--primary) 55%,transparent);z-index:2}
+    .grid-cell.sel{box-shadow:0 2px 10px rgba(0,0,0,.12),0 0 0 2px var(--primary);z-index:2}
+    .grid-cell.grid-ph{background:#F2F3F5;box-shadow:none} /* V1.0.0.77：未加载页占位格（窗口内数据未到时显示，加载完成自动替换为真实格） */
+    /* V1.0.0.48：网格视图透出章/水印效果——纯展示浮层，禁一切交互（页底图 pointer-events:none 已有 page-overlay，子元素覆盖回 auto 的章/水印需单独压回 none） */
+    .grid-cell .page-overlay{pointer-events:none}
+    .grid-cell .stamp-ov{pointer-events:none;cursor:default}
+    .grid-cell .wm-box{pointer-events:none;cursor:default}
+    .grid-cell .page-img{display:block;width:100%}
+    .grid-fail{display:flex;align-items:center;justify-content:center;width:100%;min-height:140px;color:#a8a8a8;font-size:12px;line-height:1.6;text-align:center}
+    .grid-page-no{position:absolute;left:6px;top:6px;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px;padding:0 6px;border-radius:8px;pointer-events:none}
+    .grid-loading,.grid-end{position:absolute;left:0;right:0;bottom:4px;text-align:center;color:#8A919F;font-size:12px;padding:10px 0;line-height:1}
 .pp-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#666;font-size:22px;text-align:center}
 .pp-empty{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
 .pp-empty-box{background:#fff;width:320px;padding:60px 24px;box-shadow:0 2px 10px rgba(0,0,0,.12);text-align:center;color:#666;font-size:16px;line-height:2.2}
@@ -309,7 +326,24 @@ button,input,select,textarea{font-family:inherit}
 .zoom-input .el-input__inner{text-align:center}
 
 /* V2.4.0.388：PDF 模式文字水印提示条——Element Alert info 风格（浅蓝底+主蓝文字+圆角），50% 透明，悬浮预览区顶部不随页面滚动 */
-.wm-mode-banner{position:absolute;top:56px;left:50%;transform:translateX(-50%);z-index:59;display:flex;align-items:center;gap:6px;padding:9px 20px;background:var(--primary-banner-bg2);border:1px solid var(--primary-banner-border);border-radius:8px;color:var(--primary-active);font-size:13.5px;font-weight:600;opacity:.5;pointer-events:none;box-shadow:0 2px 10px var(--primary-ring-soft);white-space:nowrap;letter-spacing:.3px}
+/* V1.0.0.55：水印/盖章互斥双模式提示条——右上角、工具条下方、两行左右居中；水印模式=蓝底白字+白底蓝字按钮；盖章模式=白底蓝字+蓝底白字按钮 */
+/* V1.0.0.55：水印/盖章互斥双模式提示条——右上角、工具条下方、两行左右居中；水印模式=蓝底白字+白底蓝字按钮；盖章模式=白底蓝字+蓝底白字按钮 */
+/* V1.0.0.57b：背景恢复不透明（撤销 50% 透明）；移动按钮独立悬浮提示条正下方外部（白底蓝字圆形，不透明） */
+.wm-mode-banner{position:absolute;top:60px;right:14px;z-index:59;display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;font-size:13px;font-weight:600;letter-spacing:.3px;box-shadow:0 4px 16px rgba(0,0,0,.16);pointer-events:auto;user-select:none}
+.wm-mode-edit{background:var(--primary);color:#fff}
+.wm-mode-guard{background:#fff;border:1px solid var(--primary);color:var(--primary)}
+.wm-mode-text{white-space:nowrap;line-height:1.4}
+.wm-mode-btnrow{display:flex;align-items:center;gap:6px}
+.wm-mode-btn.el-button--small{height:26px;padding:0 14px;font-size:12.5px;font-weight:600}
+.wm-mode-edit .wm-mode-btn.el-button{background:#fff;color:var(--primary);border:1px solid var(--primary)}
+.wm-mode-edit .wm-mode-btn.el-button:hover{background:#f2f3f5;color:var(--primary);border-color:var(--primary)}
+.wm-mode-guard .wm-mode-btn.el-button{background:var(--primary);color:#fff;border:1px solid var(--primary)}
+.wm-mode-guard .wm-mode-btn.el-button:hover{background:var(--primary);opacity:.9;color:#fff;border-color:var(--primary)}
+.wm-mode-btn{margin-left:0;height:26px;line-height:1;padding:0 12px;background:#fff;color:var(--primary);border:none;border-radius:6px;font-weight:600;cursor:pointer}
+.wm-mode-btn:hover{background:#f0f7ff}
+/* V1.0.0.57：批量放置印章置灰态模拟（去 :disabled 后保留视觉，点击可达以便提示） */
+.btn-disabled-look{opacity:.55;cursor:not-allowed}
+.btn-disabled-look:hover{opacity:.55}
 
 /* ============ 卡片 ============ */
 .card{background:var(--card);border:1px solid var(--card-border);border-radius:10px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:14px 12px;margin-bottom:12px} /* V2.4.0.357：全部卡片统一浅阴影（浮起感） */
@@ -372,6 +406,14 @@ button,input,select,textarea{font-family:inherit}
 
 /* 操作反馈蓝条（§4.15） */
 .op-bar{background:#E6F0FF;border:1px solid #B9D9F2;color:#1F4E79;border-radius:4px;padding:7px 10px;margin:0;font-size:12.5px;line-height:1.5}
+/* V1.0.0.78：操作提示区文件名《》+黑色加粗（v-html 由 opHintHtml 生成，escape 后仅《》片段包 strong） */
+.op-bar strong{color:#000;font-weight:700}
+/* V1.0.0.78：文件生成中动态点点点（合并写盘阶段，opHint 以「文件生成中」开头时显示） */
+.gen-dots{display:inline-flex;margin-left:2px;vertical-align:baseline}
+.gen-dots i{width:4px;height:4px;margin:0 1px;border-radius:50%;background:#1F4E79;display:inline-block;animation:genDot 1.2s infinite ease-in-out}
+.gen-dots i:nth-child(2){animation-delay:.2s}
+.gen-dots i:nth-child(3){animation-delay:.4s}
+@keyframes genDot{0%,80%,100%{opacity:.2;transform:scale(.8)}40%{opacity:1;transform:scale(1)}}
 /* v2.4.0.36 下方三区弹性列（移出滚动条1）：
    压缩优先级=系统日志(3)→操作提示(2)→盖章(1)→1-4区域(滚动条1内部滚)；系统日志 flex-grow 吃掉上方收缩释放的空间 */
 .bottom-area{display:flex;flex-direction:column;flex:1 1 auto;background:#fff;border-top:1px solid var(--border)} /* v2.4.0.38：flex-grow:0→1 修复"系统日志底部悬空"——上方1-4区展开/收缩时 bottom-area 吸收剩余高度、日志(flex:1 3 0)撑满贴底 */
@@ -388,6 +430,8 @@ button,input,select,textarea{font-family:inherit}
 .log-item.log-imp{color:var(--primary);font-weight:600}
 .log-item .log-dir{cursor:pointer;text-decoration:underline}
 .log-item .log-dir:hover{opacity:.75}
+/* V1.0.0.79：系统日志区内《文件名》黑色加粗（strong 覆盖各类型日志颜色，与操作提示区一致） */
+.log-item strong{color:#000;font-weight:700}
 .log-ts{color:var(--text-3);margin-right:6px}
 .el-button.btn-generate{background:var(--danger);border-color:var(--danger);color:#fff;font-weight:700}
 .btn-generate:hover{background:var(--danger-hover);border-color:var(--danger-hover);color:#fff}
@@ -501,6 +545,9 @@ button,input,select,textarea{font-family:inherit}
 /* V2.4.0.400/403：主题色切换下拉（仅付费版渲染） */
 .theme-switch-btn{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border:1px solid #dcdfe6;border-radius:6px;background:#fff;height:28px;font-size:12px;color:#1F2329;cursor:pointer;transition:border-color .2s}
 .theme-switch-btn:hover{border-color:var(--primary)}
+.tb-grid-btn{display:inline-flex;align-items:center;gap:2px;padding:3px 10px;border:1px solid #dcdfe6;border-radius:6px;background:#fff;height:28px;font-size:12px;color:#1F2329;cursor:pointer;transition:border-color .2s;flex-shrink:0}
+.tb-grid-btn:hover{border-color:var(--primary)}
+.tb-grid-btn.on{border-color:var(--primary);color:var(--primary)}
 .theme-opt-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
 .theme-opt-active{color:var(--primary);font-weight:600}
 .badge-upgrade-float.bu-show{opacity:1;transform:translate(-50%,-50%) scale(1)}
@@ -523,7 +570,7 @@ button,input,select,textarea{font-family:inherit}
       </div>
     </div>
     <div class="tb-right">
-      <!-- 视图组（单页/放大/双页）：标题栏、使用说明按钮左边；v2.4.0.78 统一 el-radio-button -->
+      <!-- 视图组（单页/放大/双页 平铺选项卡 + 多页下拉：四页/八页网格）；V1.0.0.56：双页回平铺选项卡（用户确认方案A），4/8 页仅浏览整页连续滚动 -->
       <el-radio-group v-model="viewMode" @change="setView" class="seg-radio">
         <el-tooltip content="单页视图：滚轮翻页，Ctrl+滚轮缩放" placement="bottom">
           <el-radio-button value="single">单页</el-radio-button>
@@ -531,10 +578,21 @@ button,input,select,textarea{font-family:inherit}
         <el-tooltip content="放大视图：按住左键拖动页面，滚轮缩放" placement="bottom">
           <el-radio-button value="zoom" :disabled="!pdfLoaded && !imgLoaded">放大</el-radio-button>
         </el-tooltip>
-        <el-tooltip content="双页视图：两页并排预览，固定 100%，滚轮翻页" placement="bottom">
+        <el-tooltip content="双页视图：两页并排固定 100%，滚轮向下滚动浏览（仅查看，不可盖章 / 加水印）" placement="bottom">
           <el-radio-button value="double" :disabled="imgMode || (!pdfLoaded && !imgLoaded)">双页</el-radio-button>
         </el-tooltip>
       </el-radio-group>
+      <el-tooltip content="多页网格视图：四页 / 八页网格，固定 100%，滚轮向下滚动浏览（仅查看，不可盖章 / 加水印）" placement="bottom">
+        <el-dropdown trigger="click" @command="gridViewPick" :disabled="imgMode || (!pdfLoaded && !imgLoaded)">
+          <span class="tb-grid-btn" :class="{on: viewMode==='double'||viewMode==='grid4'||viewMode==='grid8'}">{{ gridBtnText }}<el-icon style="margin-left:2px"><component :is="'ArrowDown'"></component></el-icon></span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="grid4" :class="{ 'theme-opt-active': viewMode==='grid4' }">四页</el-dropdown-item>
+              <el-dropdown-item command="grid8" :class="{ 'theme-opt-active': viewMode==='grid8' }">八页</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </el-tooltip>
       <div class="tb-fs" :class="{on:isFullscreen}" @click="toggleFullscreen">
         <el-icon><component :is="isFullscreen?'Close':'FullScreen'"></component></el-icon>
         <span>{{ isFullscreen?'恢复':'全屏' }}</span>
@@ -665,15 +723,15 @@ button,input,select,textarea{font-family:inherit}
                     <template #empty><div style="text-align:center;color:#909399;padding:10px 0;font-size:13px">请选择印章</div></template>
                   </el-select>
                 </div>
-                <el-tooltip content="选择印章图片文件（PNG/JPG），加入印章列表" placement="top"><el-button @click="pickSealFile">选择印章</el-button></el-tooltip>
+                <el-tooltip content="选择印章图片文件（PNG），加入印章列表" placement="top"><el-button @click="pickSealFile">选择印章</el-button></el-tooltip>
               </div>
               <!-- 分区1 显示参数（二级标题，可折叠） -->
               <div class="sect-block" id="navsect-stamp-param">
               <div class="sect-title" v-show="navSectOn('stamp','param')" @click="toggleSect('stampSect','disp')"><rei-arrow class="sect-arrow" :deg="stampSect.disp?180:0"></rei-arrow>显示参数</div>
               <div v-show="navSectOn('stamp','param') && stampSect.disp" class="row" style="flex-wrap:nowrap;justify-content:flex-start;align-items:center">
-                <div class="disp-cell"><label>印章尺寸</label><el-input-number class="tbl-input" v-model="sealSize" :min="1" :max="300" controls-position="right" style="width:88px"></el-input-number><span class="unit">mm</span></div>
-                <div class="disp-cell"><label>不透明度</label><el-input-number class="tbl-input" v-model="opacity" :min="0" :max="100" controls-position="right" style="width:88px"></el-input-number><span class="unit">%</span></div>
-                <div class="disp-cell"><label>旋转</label><el-input-number class="tbl-input" v-model="rotation" :min="-360" :max="360" controls-position="right" style="width:88px"></el-input-number><span class="unit">°</span></div>
+                <div class="disp-cell"><label>印章尺寸</label><el-input-number class="tbl-input" v-model="sealSize" :min="1" :max="300" controls-position="right" style="width:88px" @change="sealParamNoSealTip"></el-input-number><span class="unit">mm</span></div>
+                <div class="disp-cell"><label>不透明度</label><el-input-number class="tbl-input" v-model="opacity" :min="0" :max="100" controls-position="right" style="width:88px" @change="sealParamNoSealTip"></el-input-number><span class="unit">%</span></div>
+                <div class="disp-cell"><label>旋转</label><el-input-number class="tbl-input" v-model="rotation" :min="-360" :max="360" controls-position="right" style="width:88px" @change="sealParamNoSealTip"></el-input-number><span class="unit">°</span></div>
               </div>
               </div>
               <!-- v2.4.0.40：随机角度位移/盖章渲染 已移至左栏顶部（开关+按钮弹窗），原参数区块随迁，此处移除 -->
@@ -682,21 +740,23 @@ button,input,select,textarea{font-family:inherit}
               <div class="sect-title" v-show="navSectOn('stamp','ridge')" @click="toggleSect('stampSect','ridge')"><rei-arrow class="sect-arrow" :deg="stampSect.ridge?180:0"></rei-arrow>骑缝章</div>
               <div v-show="navSectOn('stamp','ridge') && stampSect.ridge" class="row">
                 <el-radio-group v-model="seamType" @change="setSeamType" class="seg-radio" :disabled="pageCount<=1">
-                  <el-radio-button value="1">不加</el-radio-button>
-                  <el-radio-button value="0">全部页</el-radio-button>
-                  <el-radio-button value="2">奇数页</el-radio-button>
-                  <el-radio-button value="3">偶数页</el-radio-button>
+                  <el-tooltip content="不加：不盖骑缝章" placement="top"><el-radio-button value="1">不加</el-radio-button></el-tooltip>
+                  <el-tooltip content="全部页：每页都盖骑缝章" placement="top"><el-radio-button value="0">全部页</el-radio-button></el-tooltip>
+                  <el-tooltip content="奇数页：只盖 1、3、5…页" placement="top"><el-radio-button value="2">奇数页</el-radio-button></el-tooltip>
+                  <el-tooltip content="偶数页：只盖 2、4、6…页" placement="top"><el-radio-button value="3">偶数页</el-radio-button></el-tooltip>
                 </el-radio-group>
               </div>
               <div v-show="navSectOn('stamp','ridge') && stampSect.ridge" class="row">
                 <label style="white-space:nowrap">骑缝章位置</label>
                 <el-select v-model="sealPos" style="width:74px"><el-option label="右" value="右"></el-option><el-option label="左" value="左"></el-option><el-option label="上" value="上"></el-option><el-option label="下" value="下"></el-option></el-select>
-                <label style="white-space:nowrap;margin-left:14px">位置</label>
-                <el-select v-model="posVal" style="width:74px"><el-option label="50%" value="50%"></el-option><el-option label="30%" value="30%"></el-option><el-option label="70%" value="70%"></el-option></el-select>
+                <el-tooltip content="骑缝章沿缝线方向的位置（百分比）" placement="top">
+                  <span style="display:inline-flex;align-items:center;gap:4px"><label style="white-space:nowrap;margin-left:14px">位置</label>
+                  <el-select v-model="posVal" style="width:74px"><el-option label="50%" value="50%"></el-option><el-option label="30%" value="30%"></el-option><el-option label="70%" value="70%"></el-option></el-select></span>
+                </el-tooltip>
                 <label style="white-space:nowrap;margin-left:14px">分割数</label>
-                <el-tooltip :content="pageCount<=1?'单页文档无需骑缝章，分割数锁定为自动':'骑缝章分割数：默认「自动」按文档页数自动调整；点 ▲ 进入手动数字（0 起），点 ▼ 回到自动'" placement="top">
-                  <div class="seg-combo" :class="{locked: pageCount<=1}">
-                    <el-input :model-value="segAuto?'自动':String(segCount)" readonly class="seg-combo-input"></el-input>
+                <el-tooltip :content="(pageCount<=1 && !dirMode)?'单页文档无需骑缝章，分割数锁定为自动':'骑缝章分割数：默认「自动」按文档页数自动调整；可直接输入数字（2~500）或点 ▲ 手动设置，点 ▼ 回到自动'" placement="top">
+                  <div class="seg-combo" :class="{locked: pageCount<=1 && !dirMode}">
+                    <el-input :model-value="segDraft" :readonly="pageCount<=1 && !dirMode" class="seg-combo-input" @input="segOnInput" @change="segOnCommit"></el-input>
                     <div class="seg-combo-step">
                       <span class="seg-combo-up" :class="{disabled: pageCount<=1}" @click="segStepUp">▲</span>
                       <span class="seg-combo-down" :class="{disabled: pageCount<=1}" @click="segStepDown">▼</span>
@@ -832,7 +892,7 @@ button,input,select,textarea{font-family:inherit}
                 <div class="row-divider"></div>
                 <div class="small-tip">骑缝章使用上方「印章参数-骑缝章」设置：{{ seamType==='1'?'不加':(seamType==='2'?'奇数页':(seamType==='3'?'偶数页':'全部页')) }} · {{ sealPos }} {{ posVal }} · 分割{{ segAuto?'自动':segCount }}</div>
                 <div class="row mt8">
-                  <el-button type="primary" @click="previewBatchStamp" :disabled="!dirMode || !curFileList.length">批量放置印章</el-button>
+                  <el-button type="primary" @click="previewBatchStamp" :class="{'btn-disabled-look': !dirMode || !curFileList.length}">批量放置印章</el-button>
                   <el-button @click="undoBatchStamp" :disabled="!dirMode || !curFileList.length">撤销放置</el-button>
                 </div>
               </div>
@@ -895,14 +955,16 @@ button,input,select,textarea{font-family:inherit}
                 <div class="sect-div"></div>
                 <!-- 方案管理 -->
                 <div class="row">
-                  <label style="white-space:nowrap">水印方案</label>
-                  <el-select v-model="wmSchemeCur" style="width:160px" placeholder="选择方案" @visible-change="v=>{ if(v) loadWmSchemes(); }">
-                    <el-option v-for="s in wmSchemes" :key="s" :label="s" :value="s"></el-option>
-                    <template #empty><span style="color:#909399;font-size:13px">暂无方案</span></template>
+                  <label style="white-space:nowrap">预存水印框</label>
+                  <el-select v-model="wmSchemeCur" style="width:160px" placeholder="选择水印框" @visible-change="v=>{ if(v) loadWmSchemes(); }">
+                    <el-option v-for="s in wmSchemes" :key="s" :label="s" :value="s" style="display:flex;align-items:center">
+                      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ s }}</span>
+                      <el-icon class="wm-scheme-del" style="flex:none;margin-left:8px;cursor:pointer;color:#909399" @click.stop="wmDelSchemeByName(s)"><Close></Close></el-icon>
+                    </el-option>
+                    <template #empty><span style="color:#909399;font-size:13px">暂无水印框</span></template>
                   </el-select>
-                  <el-button size="small" type="primary" style="margin-left:8px" @click="wmApplyScheme" :disabled="!wmSchemeCur">添加</el-button>
-                  <el-button size="small" style="margin-left:8px" @click="wmDelScheme" :disabled="!wmSchemeCur">删除方案</el-button>
-                </div>
+                  <el-button size="small" type="primary" style="margin-left:8px" @click="wmApplyScheme" :disabled="!wmSchemeCur">添加到页面</el-button>
+                                  </div>
               </div>
             </div>
           </div>
@@ -911,7 +973,7 @@ button,input,select,textarea{font-family:inherit}
           <div class="card" id="navcard-output" v-if="navCardOn('output')">
             <div class="card-head">
               <span class="c-no">5</span><span class="c-title">输出设置</span>
-              <span class="c-hint">盖章输出模式 / DPI / 文件名后缀</span>
+              <span class="c-hint">盖章输出模式 / 输出格式 / DPI / 文件名后缀</span>
               <div class="fold-btn" :class="cards.output?'red':'blue'" @click="toggleCard('output')">
                 <span>{{ cards.output?'收起设置':'展开设置' }}</span><rei-arrow class="arr" :deg="cards.output?180:0"></rei-arrow>
               </div>
@@ -920,17 +982,24 @@ button,input,select,textarea{font-family:inherit}
               <!-- 二级标题：盖章输出模式（可折叠；模式切换统一为分段按钮） -->
               <div class="sect-block" id="navsect-output-mode">
               <div class="sect-title" v-show="navSectOn('output','mode')" @click="toggleSect('outSect','mode')"><rei-arrow class="sect-arrow" :deg="outSect.mode?180:0"></rei-arrow>盖章输出模式</div>
-              <div v-show="navSectOn('output','mode') && outSect.mode" class="row">
+              <div v-show="navSectOn('output','mode') && outSect.mode" class="row" :style="imgMode?{opacity:.45,pointerEvents:'none'}:{}">
                 <el-radio-group v-model="outputMode" class="seg-radio">
-                  <el-radio-button value="merge">合并模式</el-radio-button>
-                  <el-radio-button value="overlay">叠加模式</el-radio-button>
+                  <el-tooltip content="合并模式：盖章 / 水印直接合入页面内容，合并后文字不可编辑" placement="top"><el-radio-button value="merge">合并模式</el-radio-button></el-tooltip>
+                  <el-tooltip content="叠加模式：盖章以可编辑元素浮于页面上" placement="top"><el-radio-button value="overlay">叠加模式</el-radio-button></el-tooltip>
                 </el-radio-group>
               </div>
               </div>
-              <!-- 二级标题：输出文件DPI（可折叠；从底部操作条挪入，短文本分段按钮+悬停提示） -->
+              <!-- 二级标题：输出文件设置（V1.0.0.46 需求3：输出格式 PDF/JPG/PNG + DPI；JPG/PNG 时叠加模式也转栅格化图片） -->
               <div class="sect-block" id="navsect-output-dpi">
-              <div class="sect-title" v-show="navSectOn('output','dpi')" @click="toggleSect('outSect','dpi')"><rei-arrow class="sect-arrow" :deg="outSect.dpi?180:0"></rei-arrow>输出文件DPI</div>
-              <div v-show="navSectOn('output','dpi') && outSect.dpi" class="row" :style="outputMode==='overlay'?{opacity:.45,pointerEvents:'none'}:{}">
+              <div class="sect-title" v-show="navSectOn('output','dpi')" @click="toggleSect('outSect','dpi')"><rei-arrow class="sect-arrow" :deg="outSect.dpi?180:0"></rei-arrow>输出文件设置</div>
+              <div v-show="navSectOn('output','dpi') && outSect.dpi" class="row" :style="imgMode?{opacity:.45,pointerEvents:'none'}:{}">
+                <el-checkbox-group v-model="outFormatArr" class="seg-check">
+                  <el-tooltip content="输出 PDF 文件（合并模式转栅格 PDF；叠加模式保持文字可编辑）" placement="top"><el-checkbox value="pdf">PDF</el-checkbox></el-tooltip>
+                  <el-tooltip content="输出 JPG 图片：每个 PDF 生成一个同名文件夹，文件夹名带 _JPG，图片按页码 p0001.jpg 依次存放" placement="top"><el-checkbox value="jpg">JPG</el-checkbox></el-tooltip>
+                  <el-tooltip content="输出 PNG 图片：每个 PDF 生成一个同名文件夹，文件夹名带 _PNG，图片按页码 p0001.png 依次存放" placement="top"><el-checkbox value="png">PNG</el-checkbox></el-tooltip>
+                </el-checkbox-group>
+              </div>
+              <div v-show="navSectOn('output','dpi') && outSect.dpi" class="row" :style="outDpiDisabled?{opacity:.45,pointerEvents:'none'}:{}">
                 <el-radio-group v-model="dpi" class="seg-radio">
                   <el-tooltip content="极高（300DPI）：文件最清晰，体积最大" placement="top"><el-radio-button value="300">极高</el-radio-button></el-tooltip>
                   <el-tooltip content="高（200DPI）" placement="top"><el-radio-button value="200">高</el-radio-button></el-tooltip>
@@ -978,12 +1047,12 @@ button,input,select,textarea{font-family:inherit}
             <el-button class="btn-generate" style="height:34px" :loading="generating || imgBusy" @click="handleGenerate()">生成结果文件</el-button>
           </div>
           <div class="op-hint">
-            <div class="op-bar">{{ opHint }}</div>
+            <div class="op-bar"><span v-html="opHintHtml()"></span><span v-if="genMerging" class="gen-dots"><i></i><i></i><i></i></span></div>
           </div>
           <div class="log-panel">
             <div class="log-head"><span>系统日志</span><span style="margin-left:auto" class="small-tip">{{ logs.length }} 条</span></div>
             <div ref="logList" class="log-list">
-              <div v-for="(l,i) in logs" :key="i" class="log-item" :class="[l.err?'err':'',l.t?('log-'+l.t):'']"><span class="log-ts">{{ l.ts }}</span><span v-if="l.dir" class="log-dir" :title="l.msg" @click="openLogDir(l.dir)">{{ l.msg }}</span><template v-else>{{ l.msg }}</template></div>
+              <div v-for="(l,i) in logs" :key="i" class="log-item" :class="[l.err?'err':'',l.t?('log-'+l.t):'']"><span class="log-ts">{{ l.ts }}</span><span v-if="l.dir" class="log-dir" :title="l.msg" @click="openLogDir(l.dir)">{{ l.msg }}</span><template v-else><span v-html="logMsgHtml(l.msg)"></span></template></div>
             </div>
           </div>
           </div>
@@ -998,7 +1067,7 @@ button,input,select,textarea{font-family:inherit}
 
     <!-- 预览区 -->
     <div class="preview" ref="previewEl">
-      <div class="preview-stage" ref="stage" :class="{'stage-zoom': viewMode==='zoom'}" @contextmenu.prevent="wmStageCtx($event)" @wheel="onStageWheel">
+      <div class="preview-stage" ref="stage" :class="{'stage-zoom': viewMode==='zoom'}" @contextmenu.prevent="wmStageCtx($event)" @wheel="onStageWheel" @scroll="gridOnScroll">
         <!-- 拖放提示条（V2.4.0.9：整窗拖放，拖到任意位置高亮提示） -->
         <div v-if="dragOver" class="drop-banner"><el-icon style="margin-right:6px;font-size:18px"><Download></Download></el-icon>松开以加载 PDF 文件 / 图片</div>
 
@@ -1009,7 +1078,7 @@ button,input,select,textarea{font-family:inherit}
             <div class="page-overlay">
               <!-- V2.4.0.370：图片模式=文字水印模式——渲染不受 watermarkEnabled 单独闸门（与控件区 (watermarkEnabled||imgMode) 条件对齐；防图片模式全新加载加框不显示） -->
               <template v-if="watermarkEnabled || imgMode">
-                <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgDispW(),imgW,imgH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="'双击编辑文字；左键拖动移动；右键菜单复制/粘贴/删除'">
+                <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgDispW(),imgW,imgH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="wmEditMode ? '双击编辑文字；左键拖动移动；右键菜单复制/粘贴/删除' : '水印框已只读，可正常盖章'">
                   <div v-if="wmEditingId===b.id" :ref="'wmEdit-'+b.id" class="wm-txt wm-editing" :style="wmTextStyle(b,imgDispW(),imgW,imgH)" contenteditable="true" spellcheck="false" @compositionstart="wmImeStart(b, $event)" @compositionend="wmImeEnd(b, $event)" @input="wmEditInput(b)" @blur="wmDblEditEnd(b)" @keydown.esc.prevent="wmDblEditCancel(b)" @mousedown.stop>{{ b.text }}</div>
                   <div v-else class="wm-txt" :style="wmTextStyle(b,imgDispW(),imgW,imgH)"><template v-if="b.wrapLines && b.wrapLines.length"><div v-for="(ln,i) in b.wrapLines" :key="i" class="wm-wl-line">{{ ln }}</div></template><template v-else><div v-for="(ln,li) in wmEnsureSnap(b)" :key="'f'+li" class="wm-wl-line">{{ ln }}</div></template></div>
                   <template v-if="wmSelId===b.id && wmEditingId!==b.id">
@@ -1026,6 +1095,34 @@ button,input,select,textarea{font-family:inherit}
               </template>
             </div>
           </div>
+          <div v-else-if="pdfLoaded && (viewMode==='grid4'||viewMode==='grid8')" class="page-grid" :style="{height: gridTotalH+'px'}">
+            <!-- V1.0.0.77 页级虚拟化：容器高度恒定=全文档（滚动条从一开始即完整文档高度），grid-row 绝对定位行容器只渲染视口±2 屏（gridWinRowsData）；
+                 范围外移除 DOM 但 gridPages 数据全量保留；向前插入数据不改变 DOM 位置（绝对定位）→ 滚动不跳；章子/水印/骑缝章随行回收重建；图片缓存复用 -->
+            <div v-for="row in gridWinRowsData" :key="'gr'+row.row" class="grid-row" :style="gridRowStyle(row)">
+              <template v-for="g in row.cells" :key="'g'+g.page">
+                <div v-if="g.placeholder" class="grid-cell grid-ph" :style="gridCellStyle(g)"><div class="grid-fail">加载中…</div></div>
+                <div v-else class="grid-cell" :class="{sel: Number(g.page)===Number(curPage)}" :style="gridCellStyle(g)" :data-page="g.page" title="双击进入单页视图" @click="gridSelect(g)" @dblclick.prevent.stop="gridGoSingle(g)">
+                  <template v-if="g.failed"><div class="grid-fail">页面加载失败<br>切换视图后重试</div></template>
+                  <img v-else class="page-img" :src="g.url" style="width:100%" alt="" loading="lazy" @error="gridImgErr($event,g)">
+                  <!-- V1.0.0.49：网格透出盖章/水印效果——章与水印框均按页拉取（GetPageStamps / GetPageWatermarks，与单页/双页所见一致），
+                       仅按每格 pt 基准缩放（横竖页混排所见一致）；纯展示不可交互（盖章/水印/缩放/翻页仍按 46 约定禁用） -->
+                  <div class="page-overlay">
+                    <div class="seam-slice" v-for="sl in seamByPage(g.page)" :key="'gsl'+sl.page+'-'+sl.srcX+'-'+sl.y" :style="gridSeamStyle(sl,gridCellWCalc(),g.ptW,g.ptH,gridCellTick)"></div>
+                    <img v-for="s in g.stamps" :key="s.id" class="stamp-ov" :src="s.url" draggable="false" :style="gridStampStyle(s,gridCellWCalc(),g.ptW,g.ptH,gridCellTick)" :title="''">
+                    <template v-if="watermarkEnabled">
+                      <div v-for="b in g.wms" :key="b.id" class="wm-box" :style="wmOuterStyle(b,gridCellWCalc(),g.ptW,g.ptH,gridCellTick)">
+                        <div class="wm-txt" :style="wmTextStyle(b,gridCellWCalc(),g.ptW,g.ptH,gridWmFs(b,gridCellWCalc(),g.ptW,g.ptH),gridCellTick)"><template v-if="b.wrapLines && b.wrapLines.length"><div v-for="(ln,i) in b.wrapLines" :key="i" class="wm-wl-line">{{ ln }}</div></template><template v-else><div v-for="(ln,li) in wmEnsureSnap(b)" :key="'f'+li" class="wm-wl-line">{{ ln }}</div></template></div>
+                      </div>
+                    </template>
+                  </div>
+                  <div class="grid-page-no">{{ g.page }}</div>
+                </div>
+              </template>
+            </div>
+            <div v-if="gridLoading||gridLoadingPrev" class="grid-loading">正在加载页面…</div>
+            <div v-else-if="!gridPages.length" class="grid-end">页面加载失败或无页面（详见日志 gridLoad 打点）</div>
+            <div v-else-if="gridStart>pageCount" class="grid-end">已显示全部 {{ pageCount }} 页</div>
+          </div>
           <div v-else-if="pdfLoaded && viewMode==='double'" class="page-pair">
             <div class="page-wrap" :style="{width:imgW2+'px'}" @mousedown.prevent="onStageDown($event,1)">
               <img class="page-img" :src="curPageUrl" :style="{width:imgW2+'px'}" alt="">
@@ -1035,7 +1132,7 @@ button,input,select,textarea{font-family:inherit}
                      :style="stampStyle(s,imgW2)" @mousedown.prevent.stop="stampDragStart($event,s,1)" @contextmenu.prevent.stop="removeStamp(s.id)" :title="'左键拖动移动；右键删除印章'">
                 <!-- 文字水印（V2.4.0.96）：开关开启显示；mousedown.stop 隔离不触发盖章 -->
                 <template v-if="watermarkEnabled">
-                  <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW2,pageW,pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="'双击编辑文字；左键拖动移动；右键删除'">
+                  <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW2,pageW,pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="wmEditMode ? '双击编辑文字；左键拖动移动；右键删除' : '水印框已只读，可正常盖章'">
                     <div v-if="wmEditingId===b.id" :ref="'wmEdit-'+b.id" class="wm-txt wm-editing" :style="wmTextStyle(b,imgW2,pageW,pageH)" contenteditable="true" spellcheck="false" @compositionstart="wmImeStart(b, $event)" @compositionend="wmImeEnd(b, $event)" @input="wmEditInput(b)" @blur="wmDblEditEnd(b)" @keydown.esc.prevent="wmDblEditCancel(b)" @mousedown.stop>{{ b.text }}</div>
                     <div v-else class="wm-txt" :style="wmTextStyle(b,imgW2,pageW,pageH)"><template v-if="b.wrapLines && b.wrapLines.length"><div v-for="(ln,i) in b.wrapLines" :key="i" class="wm-wl-line">{{ ln }}</div></template><template v-else><div v-for="(ln,li) in wmEnsureSnap(b)" :key="'f'+li" class="wm-wl-line">{{ ln }}</div></template></div>
                     <template v-if="wmSelId===b.id && wmEditingId!==b.id">
@@ -1059,7 +1156,7 @@ button,input,select,textarea{font-family:inherit}
                 <img v-for="s in pageStampsRight" :key="s.id" class="stamp-ov" :src="s.url" draggable="false"
                      :style="stampStyle(s,imgW2)" @mousedown.prevent.stop="stampDragStart($event,s,2)" @contextmenu.prevent.stop="removeStamp(s.id)" :title="'左键拖动移动；右键删除印章'">
                 <template v-if="watermarkEnabled">
-                  <div v-for="b in wmBoxesRight" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW2,pageRightW||pageW,pageRightH||pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="'双击编辑文字；左键拖动移动；右键删除'">
+                  <div v-for="b in wmBoxesRight" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW2,pageRightW||pageW,pageRightH||pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="wmEditMode ? '双击编辑文字；左键拖动移动；右键删除' : '水印框已只读，可正常盖章'">
                     <div v-if="wmEditingId===b.id" :ref="'wmEdit-'+b.id" class="wm-txt wm-editing" :style="wmTextStyle(b,imgW2,pageRightW||pageW,pageRightH||pageH)" contenteditable="true" spellcheck="false" @compositionstart="wmImeStart(b, $event)" @compositionend="wmImeEnd(b, $event)" @input="wmEditInput(b)" @blur="wmDblEditEnd(b)" @keydown.esc.prevent="wmDblEditCancel(b)" @mousedown.stop>{{ b.text }}</div>
                     <div v-else class="wm-txt" :style="wmTextStyle(b,imgW2,pageRightW||pageW,pageRightH||pageH)"><template v-if="b.wrapLines && b.wrapLines.length"><div v-for="(ln,i) in b.wrapLines" :key="i" class="wm-wl-line">{{ ln }}</div></template><template v-else><div v-for="(ln,li) in wmEnsureSnap(b)" :key="'f'+li" class="wm-wl-line">{{ ln }}</div></template></div>
                     <template v-if="wmSelId===b.id && wmEditingId!==b.id">
@@ -1084,7 +1181,7 @@ button,input,select,textarea{font-family:inherit}
               <img v-for="s in pageStamps" :key="s.id" class="stamp-ov" :src="s.url" draggable="false"
                    :style="stampStyle(s,imgW)" @mousedown.prevent.stop="stampDragStart($event,s,1)" @contextmenu.prevent.stop="removeStamp(s.id)" :title="'左键拖动移动；右键删除印章'">
               <template v-if="watermarkEnabled">
-                <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW,pageW,pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="'双击编辑文字；左键拖动移动；右键删除'">
+                <div v-for="b in wmBoxes" :key="b.id" class="wm-box" :class="{sel: wmSelId===b.id}" :style="wmOuterStyle(b,imgW,pageW,pageH)" @mousedown.prevent.stop="wmDown($event,b,'body')" @dblclick.prevent.stop="wmDblEditStart(b)" @contextmenu.prevent.stop="wmShowCtxMenu($event,b.id)" :title="wmEditMode ? '双击编辑文字；左键拖动移动；右键删除' : '水印框已只读，可正常盖章'">
                   <div v-if="wmEditingId===b.id" :ref="'wmEdit-'+b.id" class="wm-txt wm-editing" :style="wmTextStyle(b,imgW,pageW,pageH)" contenteditable="true" spellcheck="false" @compositionstart="wmImeStart(b, $event)" @compositionend="wmImeEnd(b, $event)" @input="wmEditInput(b)" @blur="wmDblEditEnd(b)" @keydown.esc.prevent="wmDblEditCancel(b)" @mousedown.stop>{{ b.text }}</div>
                   <div v-else class="wm-txt" :style="wmTextStyle(b,imgW,pageW,pageH)"><template v-if="b.wrapLines && b.wrapLines.length"><div v-for="(ln,i) in b.wrapLines" :key="i" class="wm-wl-line">{{ ln }}</div></template><template v-else><div v-for="(ln,li) in wmEnsureSnap(b)" :key="'f'+li" class="wm-wl-line">{{ ln }}</div></template></div>
                   <template v-if="wmSelId===b.id && wmEditingId!==b.id">
@@ -1106,10 +1203,14 @@ button,input,select,textarea{font-family:inherit}
           <div class="preview-empty-note">{{ pageLabel }}</div>
         </div>
       </div>
-        <!-- V2.4.0.388：PDF 模式文字水印提示条（蓝色 info 风格；仅 PDF 模式+文字水印开启时显示，悬浮预览区顶部不随页面滚动） -->
-        <div v-if="watermarkEnabled && !imgMode" class="wm-mode-banner">
-          <el-icon style="margin-right:6px;font-size:16px;vertical-align:-2px"><InfoFilled></InfoFilled></el-icon>
-          <span>已进入文字水印模式，无法盖章，需要盖章请关闭文字水印模式</span>
+        <!-- V1.0.0.55：水印/盖章互斥双模式提示条（右上角、工具条下方、两行；仅 PDF 模式+水印开启时显示，悬浮不随页面滚动） -->
+        <!-- V1.0.0.57b：背景恢复不透明；移动按钮移出提示条内部、独立悬浮于提示条正下方外部（白底蓝字圆形，与水印框移动按钮同风格），拖动位置持久化 -->
+        <!-- V1.0.0.63：提示条简化——仅水印模式（wmEditMode）显示，退出水印模式后直接消失（不再显示盖章模式白条与进入按钮）；删除外部拖动按钮（提示条本体可拖） -->
+        <div ref="wmBanner" v-if="watermarkEnabled && !imgMode && wmEditMode" class="wm-mode-banner wm-mode-edit" :style="wmBannerStyle()" @mousedown.prevent.stop="wmBannerDown($event,true)">
+          <span class="wm-mode-text">水印模式：水印可编辑，不可盖章</span>
+          <div class="wm-mode-btnrow">
+            <el-button class="wm-mode-btn" size="small" @click="toggleWmEditMode">退出水印模式</el-button>
+          </div>
         </div>
         <!-- 悬浮工具栏：翻页 + 缩放（可切换常驻/自动收起） -->
         <div class="float-wrap" :class="{'auto':floatAuto}">
@@ -1128,7 +1229,7 @@ button,input,select,textarea{font-family:inherit}
             <el-tooltip :content="imgMode?'下一张':'下一页'" placement="bottom"><el-button class="pt-ico" style="padding:0" @click="barNext"><rei-arrow :deg="-90" style="font-size:15px"></rei-arrow></el-button></el-tooltip>
             <div class="pt-div"></div>
             <el-tooltip content="缩小（Ctrl+滚轮也可缩放）" placement="bottom"><el-button class="pt-ico" style="padding:0" @click="barZoomOut"><el-icon><Minus></Minus></el-icon></el-button></el-tooltip>
-            <el-input v-model="zoomText" class="zoom-input" :disabled="viewMode==='double'" @change="barClampZoom"></el-input>
+            <el-input v-model="zoomText" class="zoom-input" :disabled="viewMode==='double'||viewMode==='grid4'||viewMode==='grid8'" @change="barClampZoom"></el-input>
             <el-tooltip content="放大（Ctrl+滚轮也可缩放）" placement="bottom"><el-button class="pt-ico" style="padding:0" @click="barZoomIn"><el-icon><Plus></Plus></el-icon></el-button></el-tooltip>
             <el-tooltip content="预览页操作说明" placement="bottom"><el-button class="pt-ico pt-ico-help" style="padding:0;background:var(--primary);color:#fff;border:none" @click="dlgOps=true"><help style="font-size:24px;color:#fff"></help></el-button></el-tooltip>
             <div class="pt-div"></div>
@@ -1243,11 +1344,11 @@ button,input,select,textarea{font-family:inherit}
     </template>
   </el-dialog>
 
-  <!-- ============ 弹窗：保存水印方案（V2.4.0.96） ============ -->
-  <el-dialog v-model="wmDlgSave" title="保存水印方案" width="360px" append-to-body align-center class="app-dialog">
+  <!-- ============ 弹窗：保存水印框（V2.4.0.96） ============ -->
+  <el-dialog v-model="wmDlgSave" title="保存水印框" width="360px" append-to-body align-center class="app-dialog">
     <div class="row" style="margin-bottom:0">
-      <label style="white-space:nowrap;flex:0 0 auto;width:88px">方案名称</label>
-      <el-input v-model="wmDlgSaveName" maxlength="30" show-word-limit placeholder="输入方案名称（1-30 字符）"></el-input>
+      <label style="white-space:nowrap;flex:0 0 auto;width:88px">水印框名称</label>
+      <el-input v-model="wmDlgSaveName" maxlength="30" show-word-limit placeholder="输入水印框名称（1-30 字符）"></el-input>
     </div>
     <template #footer>
       <el-button type="primary" @click="wmSaveScheme">确定</el-button>
@@ -1347,7 +1448,7 @@ button,input,select,textarea{font-family:inherit}
 <div v-if="wmCtxMenu.show" class="wm-ctx-menu" :style="{left:wmCtxMenu.x+'px',top:wmCtxMenu.y+'px'}" @mousedown.stop @mouseleave="wmCtxScheduleClose()" @mouseenter="wmCtxCancelClose()">
   <div v-if="wmCtxMenu.boxId!=null" class="wm-ctx-item" @click="wmCtxCopy()">复制</div>
   <div class="wm-ctx-item" @click="wmCtxPaste(wmCtxMenu.px, wmCtxMenu.py)" :style="{opacity: wmClipboard ? 1 : 0.4}">粘贴</div>
-  <div v-if="wmCtxMenu.boxId!=null" class="wm-ctx-item" @click="wmCtxSaveScheme()">保存当前页方案</div>
+  <div v-if="wmCtxMenu.boxId!=null" class="wm-ctx-item" @click="wmCtxSaveScheme()">保存当前水印框</div>
   <div v-if="wmCtxMenu.boxId!=null" class="wm-ctx-item danger" @click="wmCtxDelete()">删除</div>
 </div>
 
@@ -1365,11 +1466,11 @@ const app = createApp({
         {key:'file', short:'源', title:'源文件', subs:null},
         {key:'stamp', short:'印', title:'印章参数', subs:[{key:'param',text:'参数',title:'显示参数'},{key:'ridge',text:'骑缝',title:'骑缝章'},{key:'white',text:'去白',title:'图章去白',sw:'removeWhite'}]},
         {key:'batch', short:'批', title:'批量盖章', subs:[{key:'range',text:'范围',title:'指定范围页'},{key:'text',text:'文字',title:'按文字批量',sw:'textForce'},{key:'folder',text:'批量',title:'批处理文件',sw:'batchForce'}]},
-        {key:'watermark', short:'文', title:'文字水印', subs:null, sw:'watermarkEnabled'},
-        {key:'output', short:'出', title:'输出设置', subs:[{key:'mode',text:'模式',title:'输出模式'},{key:'dpi',text:'dpi',title:'输出文件DPI'},{key:'name',text:'命名',title:'输出文件名后缀'}]},
+        {key:'watermark', short:'文', title:'文字水印', subs:null, sw:'wmEditMode'}, /* V1.0.0.55：卡体显示=编辑中（退出水印模式即整卡消失）；图片模式特判 true 在前 */
+        {key:'output', short:'出', title:'输出设置', subs:[{key:'mode',text:'模式',title:'输出模式'},{key:'dpi',text:'dpi',title:'输出 DPI'},{key:'name',text:'命名',title:'输出文件名后缀'}]},
       ],
       /* 文字水印卡（V2.4.0.96）：开关 + 折叠；wmBoxes 当前页框；wmSelId 选中框（参数面板联动）；wmEditingId 双击编辑中 */
-      watermarkEnabled:false, wmSect:{main:true},
+      watermarkEnabled:false, wmSect:{main:true}, wmEditMode:false, /* V1.0.0.54：水印编辑模式——导航/提示条切换；watermarkEnabled 只管显示+输出（常驻） */
       wmBoxes:[], wmBoxesRight:[], wmSelId:null, wmEditingId:null, isComposing:false, wmCtxMenu:{show:false,x:0,y:0,boxId:null,px:null,py:null}, wmApplyAllPages:true, wmClipboard:null,
       wmFonts:['微软雅黑','宋体','黑体','楷体','仿宋'],
       wmQuickColors:[{v:'#1f2329',n:'黑'},{v:'#8a8f99',n:'灰'},{v:'#ffffff',n:'白'},{v:'#d4380d',n:'红'},{v:'#fadb14',n:'黄'},{v:'#52c41a',n:'绿'},{v:'#1677ff',n:'蓝'}],
@@ -1387,6 +1488,8 @@ const app = createApp({
       /* 输出设置卡二级分区折叠状态（输出模式/DPI/文件名后缀） */
       outSect:{mode:true, dpi:true, name:true},
       leftCollapsed:false, leftWidth:680, leftMinW:536, splitDragging:false, navH:0,      seals:[], curSeal:'', presetExists:{1:false,2:false,3:false,4:false},
+      /* V1.0.0.57：模式提示条可拖位置（相对预览区左上角 px；null=默认右上角锚定）+ 印章显示参数无章一次性提示标志 */
+      bannerPos:null, _sealParamWarned:false,
       sealSize:44, rotation:0, opacity:100,
       sealPos:'右', posVal:'50%', segCount:20, seamType:'1',
       /* v2.4.0.52：骑缝章预览——全量切片布局 + 基准章图（GetSeamPreview） */
@@ -1400,8 +1503,11 @@ const app = createApp({
       searchText:'', searchHistory:['xx公司','合同专用章'], keywordEnabled:false,
       keywords:'盖章，公章，签章', ctxRange:10, ignoreSpace:false, matchMode:'all', offsetEnabled:false,
       outputMode:'merge', namePos:'after', nameMark:'已盖章V', seqType:'num', seqPad:'1', useTs:false, tsFormat:'d8',
-      dpi:'150', saveDir:'', dirLocked:false, dirMode:false, curFileList:[], curIdx:0, dragOfs:{x:0,y:0}, curFile:'', curPage:'1', curPageInput:'1', pageCount:0, curPageUrl:'', pdfLoaded:false, pageW:595, pageH:842, imgW:595, pageRightUrl:'', pageRightW:0, pageRightH:0, imgW2:280,
+      outFormatArr:['pdf'], dpi:'150', saveDir:'', dirLocked:false, dirMode:false, curFileList:[], curIdx:0, dragOfs:{x:0,y:0}, curFile:'', curPage:'1', curPageInput:'1', pageCount:0, curPageUrl:'', pdfLoaded:false, pageW:595, pageH:842, imgW:595, pageRightUrl:'', pageRightW:0, pageRightH:0, imgW2:280, gridCellTick:0, /* V1.0.0.53：grid 视图尺寸变化计数（ResizeObserver 递增，驱动浮层按新格宽重渲染） */
       viewMode:'single',
+      /* V1.0.0.46 需求1：多页网格视图（4/8 页）——仅浏览整页连续滚动 */
+      gridPages:[], gridStart:1, gridLoading:false, _gridSeq:0, _gridScrollToPage:0, _gridSeqPrev:0, gridLoadingPrev:false, /* V1.0.0.57：切回网格补载完成后需滚动定位的目标行首（_gridDone 消费）；V1.0.0.60：向前补载独立链（_gridSeqPrev）防与向下加载互扰；V1.0.0.65：gridLoadingPrev（原名 _gridLoadingPrev 带 _ 前缀，Vue3 不代理到 this 且模板渲染 ReferenceError，改名修复） */
+      gridWinTopRow:0, gridWinRows:1, /* V1.0.0.77 页级虚拟化：可视窗口行状态（gridOnScroll 滚动更新，模板只渲染视口±2 屏行）——gridWinTopRow=窗口顶行 index、gridWinRows=可见行数（不含缓冲） */
       /* 调试页：未加载用户 PDF 时预览区显示内置 A4 调试页，可手动盖章调试渲染参数（对齐 WPF ShowBlankDebugPage） */
       debugActive:false,
       /* V2.4.0.6：渲染请求序号（只接受最新一次 RenderPage 响应，防调试页/翻页乱序覆盖）+ 用户文件标志（调试页初始化晚到时不覆盖用户文件） */
@@ -1410,12 +1516,13 @@ const app = createApp({
       floatAuto:false, floatHidden:false, floatTimer:null, zoomText:'100%',
       isFullscreen:false,
       logs:[],
-      opHint:'拖入 PDF 文件开始',
-      pageStamps:[], pageStampsRight:[], pagePts:595, dlgBatchDel:false, batchDelShowSingle:false, batchDel:null, dlgRange:false, helpOpen:false, aboutOpen:false, dlgCustomTitle:false, customTitleText:'', _tealClicks:0, dlgOps:false, dlgRename:false, renameVal:'', renameSrc:'', versionStr:'1.0.0', badgeEnabled:false, badgeDebug:false, badgeLevel:0, badgeIconsHtml:'', badgeNeedNext:0, badgeData:{totalStampCount:0,totalWatermarkCount:0,totalImageWatermarkCount:0,lastLevel:0}, enableTheme:false, themeColor:'blue', enableCustomTitle:false,
-      batchPreviewMode:false, batchPreviewed:[], segAuto:true, // V368：分割数默认自动（单文件/文件夹/启动统一；切手动用 segCount，去 500 默认）
+      opHint:'拖入文件或文件夹开始', /* V1.0.0.83：初始提示支持拖入 PDF/图片/文件夹（原「拖入 PDF 文件开始」过窄） */
+      genMerging:false, /* V1.0.0.78：文件生成中（合并写盘阶段）动态点点点——generate-progress 文案以「文件生成中」开头置 true，generate-done 复位 */
+      pageStamps:[], pageStampsRight:[], pagePts:595, dlgBatchDel:false, batchDelShowSingle:false, batchDel:null, dlgRange:false, helpOpen:false, aboutOpen:false, dlgCustomTitle:false, customTitleText:'', _tealClicks:0, dlgOps:false, dlgRename:false, renameVal:'', renameSrc:'', versionStr:'1.1.0', badgeEnabled:false, badgeDebug:false, badgeLevel:0, badgeIconsHtml:'', badgeNeedNext:0, badgeData:{totalStampCount:0,totalWatermarkCount:0,totalImageWatermarkCount:0,lastLevel:0}, enableTheme:false, themeColor:'blue', enableCustomTitle:false,
+      batchPreviewMode:false, batchPreviewed:[], segAuto:true, segDraft:'自动', // V368：分割数默认自动（单文件/文件夹/启动统一；切手动用 segCount，去 500 默认）；V1.0.0.69：segDraft 输入框显示值（自动/数字，支持手动输入）
       preset:0,
-      tex:{brightness:35,gradient:25,pressure:40,blob:30,blobSize:20,hue:0,white:10},
-      rand:{angle:8,h:5,v:5},
+      tex:{brightness:20,gradient:10,pressure:20,blob:20,blobSize:10,hue:0,white:20}, /* V1.0.0.83：盖章渲染默认值=用户确认（明暗20/渐变10/径向20/内部斑点20/斑点大小10/色偏0/局部露白20） */
+      rand:{angle:30,h:10,v:10}, /* V1.0.0.83：随机角度位移默认值=用户确认（角度30、横纵位移10） */
       off:{h:0,v:0},
       helpText:`<div class="dlg-help">
 <div class="h">一、安装与配置</div>
@@ -1435,9 +1542,10 @@ const app = createApp({
 <li>「智能体调用」：
 <ul>
 <li>《智能体调用手册.md》（供 AI 智能体阅读的使用手册，出厂内容，每次启动软件自动重置为官方版本）；</li>
-<li>《补充手册.md》（记录你的使用习惯与成功经验，<b>软件不会覆盖它</b>，由智能体经你确认后写入，可随时查看修改）；</li>
+<li>《补充手册.md》（记录你的使用习惯与成功经验，软件不会覆盖它，由智能体经你确认后写入，可随时查看修改；非初始目录，随智能体调用工作才会生成）；</li>
 <li>「智能体调用任务模板」（供 AI 智能体调用的工作任务模板）；</li>
-<li>「智能体调用工作过程文件」（智能体执行任务时产生的任务文件与日志，统一存放于此，可随时根据需要清理）。</li>
+<li>「file-stamp-watermark」（智能体调用技能包文件夹，供支持安装技能的智能体加载使用）；</li>
+<li>「智能体调用工作过程文件」（智能体执行任务时产生的任务文件与日志，统一存放于此，可随时根据需要清理；非初始目录，随智能体调用工作才会生成）。</li>
 </ul>
 </li>
 </ul>
@@ -1446,103 +1554,332 @@ const app = createApp({
 <div class="h">二、快速开始</div>
 <p><b>主要功能介绍：</b></p>
 <ol>
-<li>PDF 文件：页面盖章、盖骑缝章、加文字水印，带批量处理功能（亮点功能：随机角度位移与印章渲染，让盖章效果模拟现实盖章的随机性，不再每页完全一致）；</li>
-<li>图片：加文字水印，带批量处理功能。</li>
-<li>为智能体调用软件，专门在运行组件内加入了《智能体调用手册》，使智能体调用本软件盖章更加高效。</li>
+<li>PDF 文件：页面盖章、盖骑缝章、加水印，带批量处理功能。亮点功能：随机角度位移与印章渲染，让盖章效果模拟现实盖章的随机性，不再每页完全一致；</li>
+<li>图片：加水印，带批量处理功能；</li>
+<li>为智能体调用软件，专门在运行组件内加入了《智能体调用手册》，使智能体调用本软件工作更加高效。</li>
 </ol>
-<p><b>PDF 盖章 / 水印：</b></p>
+<p><b>（1）PDF 盖章 / 水印：</b></p>
 <ol>
 <li>将 PDF 文件或文件夹拖入软件预览区，或点击「选择文件 / 选择文件夹」按钮选取；</li>
-<li>选择印章并设置参数，或启用文字水印添加水印框；</li>
+<li>选择印章并设置参数，或启用水印功能添加水印框；</li>
 <li>在左侧导航选择要用的功能，在控件区调试功能；</li>
-<li>使用盖章，批量盖章，水印功能进行操作；在预览区点鼠标右键可以删除印章，也可以鼠标拖动印章调整印章位置；</li>
+<li>使用盖章、批量盖章、水印功能进行操作；在预览区点鼠标右键可以删除印章，也可以鼠标拖动印章调整印章位置；</li>
 <li>在预览区确认效果无误后，点击底部「生成结果文件」，输出结果文件，在系统日志内可以看到输出的文件名与目录。</li>
 </ol>
-<p><b>图片水印：</b></p>
+<p><b>（2）图片水印：</b></p>
 <ol>
 <li>将图片或图片文件夹拖入软件预览区，或点击「选择文件 / 选择文件夹」按钮选取；</li>
-<li>添加文字水印框，双击编辑文字、调整参数；</li>
+<li>添加水印框、调整内容与参数；</li>
 <li>点击「生成结果文件」，输出带水印的图片，在系统日志内可以看到输出的文件名与目录。</li>
 </ol>
-<p>图片模式<b>仅支持文字水印</b>，需要盖章请转为 PDF 处理；</p>
-<p><b>保存目录：</b></p>
-<ul>
-<li>单文件时，输出文件默认保存在源文件同目录；</li>
-<li>文件夹模式下，默认保存到源文件夹下的「已处理」目录；</li>
-<li>输出文件名默认「源文件名 + 已处理V + 编号」递增（如 1.pdf → 1_已处理V1.pdf），源文件不会被覆盖。</li>
-</ul>
+<p>图片模式<b>仅支持水印功能</b>，需要盖章请转为 PDF 处理。</p>
 <div class="h">三、智能体调用</div>
 <ol>
-<li>本软件支持把批量任务交给 AI 智能体（如豆包工作任务模式，Workbuddy 等）处理：你只需把软件文件夹挂载到智能体工作区并说明需求，智能体会自动完成盖章 / 水印并反馈结果，不需要自己操作界面。</li>
-<li>第一步：把本软件文件夹（里面是软件主程序 EXE）挂载到智能体的工作区 / 项目文件夹中；先双击运行一次 EXE（运行组件、印章库等文件由程序自动生成到软件目录），并把要用的印章图片添加进印章库。</li>
-<li>第二步：阅读软件目录下《智能体用户使用说明.md》文件内容，完成相应准备工作后，向智能体发送开场白文字，智能体会引导你提供文件夹与需求并执行任务。</li>
-<li>（可选）智能体调用 Skill 包：运行一次软件后，「运行组件\智能体调用\」下自动生成《智能体调用手册.md》与技能包文件夹「file-stamp-watermark」（技能包 = 手册知识的标准化封装：操作知识 + 4 个任务模板 + 调用脚本，跨平台通用，支持豆包 / WorkBuddy / DeepSeek；**技能包版本号由软件运行时按当前版本自动注入，与软件版本永远一致**）。你只需发送《智能体用户使用说明.md》内的开场白（让智能体读取调用手册）；智能体读完手册后会判断技能包能否加载并**核对技能包版本与软件版本是否一致**——能加载时请你选择 A（直接按调用手册工作）或 B（加载技能包后工作）；不能加载（含版本不一致）时如实告知只能选 A，并告诉你技能包所在位置（运行组件\智能体调用\file-stamp-watermark\），可自行想办法安装（如让智能体检查调整该文件夹、按平台要求放入技能目录）；若因软件升级版本不一致，重新运行一次软件即可自动更新技能包，装好后下次对话即可选 B。两种方式处理效果完全一致。</li>
-<li>支持的任务类型：<b>1 盖章 / 2 水印 / 3 盖章 + 水印 / 4 对话定制任务</b>（不按固定流程，直接说出需求，智能体与你对话确认方案后执行）。</li>
+<li>本软件支持把批量任务交给 AI 智能体（如豆包工作任务模式、WorkBuddy 等）处理：你只需把软件文件夹挂载到智能体工作区并说明需求，智能体会自动完成盖章 / 水印并反馈结果，不需要自己操作界面。</li>
+<li><b>第一步（准备工作）</b>：把本软件文件夹（存放本软件主程序 EXE 的文件夹）挂载到智能体的工作区 / 项目文件夹中；先双击运行一次 EXE（让「运行组件」等文件由程序自动生成到本软件文件夹内），并在软件界面内把印章添加好。</li>
+<li><b>第二步（开始对话）</b>：阅读本软件文件夹内《智能体用户使用说明.md》，按文件内容做好相应准备工作后，复制文件内的开场白文字发给智能体；智能体自行阅读《智能体调用手册.md》，然后引导你说明需求并执行任务。</li>
 </ol>
 <div class="h">四、左栏功能导航</div>
+<p>左侧导航是操作控件的启用与关闭，点中一级或二级按钮即启用该功能区并显示对应控件。</p>
+<div class="h">五、功能总览</div>
+<ul>
+<li>PDF 页面盖章（手动）：预览区直接操作——在预览页面上手动点击盖章，可拖动调整、右键删除；</li>
+<li>骑缝章：印章参数 → 骑缝章设置——按文档页数自动分割盖章，支持右/左/上/下位置；</li>
+<li>范围页盖章：批量盖章 → 范围——指定起始~结束页批量盖章（仅当前预览文件）；</li>
+<li>按文字盖章：批量盖章 → 按文字——按关键词自动定位并盖章（可批量处理文件夹内所有 PDF）；</li>
+<li>批处理文件盖章：批量盖章 → 批处理——文件夹内全部 PDF 按范围与位置批量盖章；</li>
+<li>随机角度位移：界面左上方按钮——盖章随机旋转与位移，模拟手工盖章效果；</li>
+<li>盖章渲染：界面左上方按钮——模拟真实盖章的纹理与色调效果；</li>
+<li>文字水印：左栏导航「文」→ 添加文字水印——给 PDF 或图片批量添加水印；</li>
+<li>预览视图切换：预览工具条——单页 / 放大 / 双页 / 四页 / 八页；</li>
+<li>输出设置：左栏导航 → 输出设置——输出模式、格式（PDF/JPG/PNG）、DPI 与命名。</li>
+</ul>
+<div class="h">六、功能详解</div>
+<div class="h">6.1 印章参数</div>
+<p><b>功能说明：</b>印章的导入、选择、重命名、删除与显示参数设置。</p>
+<p><b>入口：</b>左栏导航 → 印章参数。</p>
+<p><b>操作步骤：</b></p>
 <ol>
-<li>左侧导航是操作控件的启用与关闭，点中一级或二级按钮即启用该功能区并显示对应控件。</li>
+<li>点击「选择印章」导入印章图片（仅支持 PNG，建议使用透明背景的图章图片）；</li>
+<li>在下拉框中切换当前使用的印章；</li>
+<li>调整显示参数；</li>
+<li>如需去白，在导航选中「印章参数 → 去白」。</li>
 </ol>
-<div class="h">五、盖章方式介绍</div>
-<ol>
-<li>手动点击盖章：在预览区左键单击空白处盖章；左键单击已有印章可叠加盖章；右键单击已有印章可删除。</li>
-<li>批量盖章：指定范围页 / 按文字 / 批处理文件三种方式。批量印章也可通过右键单击删除。</li>
-<li>批量盖章 1：指定范围页盖章（仅对当前文件生效）：<p>输入起始页与结尾页，确定后在范围内批量盖章；范围内点击「结束页」自动为每页盖章，翻页限定在范围内。</p></li>
-<li>批量盖章 2：按文字盖章（文件夹模式下对文件夹内所有文件生效，单文件模式对当前文件生效）：<p>输入需要盖章的文字（如公司名称），点击「按文字放置印章」可进行效果预览。</p><p>多个关键词可用逗号、分号、顿号、空格分隔；</p><p>可设置上下文范围（目标文字前后多少字内匹配，默认 10 字）、匹配模式（全部关键词 / 任一关键词）、中心偏移；</p><p>成功盖章的关键词自动存入搜索历史（近期 10 个），点输入框下拉可查看、可删除。</p><p>注：图片型 PDF 没有文字层，不支持此方式。</p></li>
-<li>批量盖章 3：批处理文件盖章（对文件夹内所有文件生效）：<p>文件夹模式下开启，给文件夹内全部 PDF 盖章。</p><p>设置页码范围（所有页 / 首页 / 尾页 / 自定义）与盖章位置（X/Y 百分比，以页面左上角为原点），点击「批量放置印章」可进行效果预览。</p></li>
-</ol>
-<div class="h">六、随机角度位移与盖章渲染</div>
-<ol>
-<li>功能旨在于模拟人工盖章会产生的偏移、旋转及每页印章效果微差，使输出文件的印章效果更加真实。</li>
-<li>两个模块的开关与按钮在预览区上方工具条左侧，开启后点击按钮打开参数面板进行配置。</li>
-<li>随机角度位移：开启后盖章时按设定范围随机旋转与位移，模拟手工盖章效果。参数面板：旋转角度、横向位移、纵向位移。</li>
-<li>盖章渲染：开启后模拟真实盖章的纹理与色调效果。参数面板分三组：明暗与纹理（浓淡不均 / 径向压印 / 局部露白）、斑点（内部斑点 / 斑点大小）、色调与过渡（渐变过渡 / 整体色偏）；另有参数预设 1~4，可保存 / 加载 / 恢复默认。</li>
-<li>盖章渲染调试技巧：导入一个空白 PDF 页面，打开盖章渲染功能，在空白页面上盖几个章子，放大页面，到能看清章子细节；在盖章渲染的参数弹窗内，调整各项参数，观察章子变化，直到基本符合需求，然后可以保存参数；下次需要直接加载此参数即可。</li>
-</ol>
-<div class="h">七、印章参数</div>
-<ol>
-<li>印章文件：下拉切换印章；选项右侧 ✎ 重命名、✕ 删除；「选择印章」按钮导入新图片（PNG/JPG）。</li>
+<p><b>参数说明：</b></p>
+<ul>
 <li>显示参数：尺寸（单位 mm）、不透明度（百分比）、旋转（单位度）；</li>
-<li>骑缝章设置：不加 / 全部页 / 奇数页 / 偶数页（全部页=每页都盖，奇数页=只盖 1、3、5…页，偶数页=只盖 2、4、6…页）；骑缝位置（右 / 左 / 上 / 下）、位置百分比、分割数（默认「自动」按文档页数自动调整，可点 ▲ 进入手动数字；单页文档无需骑缝章，类型自动锁定「不加」）。</li>
-<li>图章去白：在左侧导航选中「印章参数 → 去白」即启用，自动去除印章图片的白色背景，容差可调。</li>
-</ol>
-<div class="h">八、文字水印</div>
+<li>去白容差：自动去除印章图片的白色背景，容差可调；</li>
+<li>印章文件下拉框：选项右侧 ✎ 重命名、✕ 删除。</li>
+</ul>
+<p><b>注意事项：</b>删除印章需谨慎，删除后需重新导入。</p>
+<div class="h">6.2 PDF 页面盖章（手动）</div>
+<p><b>功能说明：</b>在预览页面上手动放置印章，所见即所得。</p>
+<p><b>入口：</b>预览区直接操作，无需打开导航。</p>
+<p><b>操作步骤：</b></p>
 <ol>
-<li>在左侧导航点「文」启用文字水印（PDF 与图片模式通用），点「添加文字水印」在当前页 / 当前图片加框。</li>
-<li>水印框操作：<p>双击框内文字进入编辑，Enter 可手动换行；</p><p>文字超出框宽会自动换行；</p><p>框下有旋转按钮与移动按钮，鼠标按住按钮操作；</p><p>水印框四角圆点可通过鼠标操作缩放，调整水印框与其中文字的大小；</p><p>选中水印框后 Ctrl+C / Ctrl+V 可复制 / 粘贴水印框；</p><p>右键水印框可复制 / 粘贴 / 保存当前页方案 / 删除；</p><p>选中水印框按 Delete 键可删除。</p></li>
-<li>其他参数：字体（微软雅黑 / 宋体 / 黑体 / 楷体 / 仿宋）、字号、颜色（快捷色板 + 自定义）、透明度、旋转、行距、字间距、对齐（左 / 中 / 右），调整即时生效。</li>
+<li>导入 PDF 文件；</li>
+<li>在「印章参数 → 选择印章」中选中要使用的印章；</li>
+<li>在预览区左键单击空白处，在当前页盖章；</li>
+<li>按住印章可拖动微调位置；</li>
+<li>确认效果后点击「生成结果文件」。</li>
 </ol>
-<div class="h">九、预览区操作</div>
+<p><b>参数说明：</b>印章尺寸、不透明度、旋转角度在「印章参数」中调整（见 6.1）。</p>
+<p><b>注意事项：</b>右键单击印章可删除印章。</p>
+<div class="h">6.3 骑缝章</div>
+<p><b>功能说明：</b>模拟页面骑缝章效果。</p>
+<p><b>入口：</b>左栏导航 → 印章参数 → 骑缝章设置。</p>
+<p><b>操作步骤：</b></p>
 <ol>
-<li>视图切换（预览工具条）：单页 / 放大 / 双页（图片模式仅单页 / 放大）。</li>
-<li>预览区上方悬浮工具条（PDF 与图片共用同一套）：<p>文件下拉框：切换当前文件 / 图片；</p><p>◀ ▶ 上 / 下一页（图片模式为上一 / 下一张）；</p><p>页码输入框：输入后回车跳转；</p><p>－ / ＋ 缩小 / 放大（Ctrl + 滚轮也可缩放）；</p><p>「常驻 / 自动收起」：切换工具条显示方式。</p></li>
-<li>单页视图：鼠标滚轮翻页。</li>
-<li>双页视图：两页并排预览，随窗口自适应缩放，支持鼠标滚轮翻页。</li>
-<li>放大视图：左键按住拖动页面；滚轮上下滚动阅读（滚到底 / 滚到顶自动翻到下一页 / 上一页）；Ctrl + 滚轮缩放页面。</li>
+<li>选择骑缝章类型（全部页 / 奇数页 / 偶数页）（默认全部页）；</li>
+<li>选择骑缝位置（右 / 左 / 上 / 下）（默认右）；</li>
+<li>调整位置百分比（默认 50%）。</li>
 </ol>
-<div class="h">十、输出设置</div>
+<p><b>参数说明：</b></p>
+<ul>
+<li>类型：不加 / 全部页（每页都盖）/ 奇数页（只盖 1、3、5…页）/ 偶数页（只盖 2、4、6…页）；</li>
+<li>位置：右 / 左 / 上 / 下；</li>
+<li>位置百分比：默认 50%；</li>
+<li>分割数：默认「自动」按文档页数自动调整，可手动修改数字。</li>
+</ul>
+<p><b>注意事项：</b>同一 PDF 内竖向页面与横向页面并存时，软件按现实盖章效果自动换算方向：竖向页骑缝在右 → 横向页骑缝在下（竖右横下、竖下横左、竖左横上、竖上横右）。</p>
+<div class="h">6.4 指定范围页批量盖章</div>
+<p><b>功能说明：</b>对指定的页码范围内批量盖章。</p>
+<p><b>入口：</b>左栏导航 → 批量盖章 → 指定范围页批量盖章。</p>
+<p><b>操作步骤：</b></p>
 <ol>
-<li>输出模式：合并模式（盖章 / 水印直接合入页面内容，合并后文字不可编辑）/ 叠加模式（盖章以可编辑元素浮于页面上）。</li>
-<li>输出文件DPI：极高 300 / 高 200 / 标准 150 / 低 96 / 极低 72（默认标准），DPI 越大文件越清晰、占用空间越大；仅对合并（栅格化）模式生效，叠加模式不受影响。</li>
-<li>输出文件名后缀：可设置命名文字、编号位置（前 / 后）、递增类型（数字 / 字母）、位数与时间戳；默认「已处理V + 编号」。同一源文件已存在的输出自动使用 V1、V2、V3 等版本号递增，不覆盖旧结果，例如 1.pdf 输出为 1_已处理V1.pdf。</li>
+<li>输入起始页与结尾页；</li>
+<li>点击确定，预览页面跳转至最后一页，在页面上点击，完成本次批量盖章；</li>
+<li>预览效果后可点击“撤销放置”按钮取消，对印章点击鼠标右键可选择性删除印章。</li>
+</ol>
+<p><b>参数说明：</b>起始页、结尾页：要盖章的页码范围。</p>
+<p><b>注意事项：</b></p>
+<ul>
+<li>仅对当前文件生效；</li>
+<li>范围内点击「结束页」自动为每页盖章，翻页限定在范围内。</li>
+</ul>
+<div class="h">6.5 按文字批量盖章</div>
+<p><b>功能说明：</b>输入“目标文字”（如公司名称），软件自动在页面上搜索“目标文字”的位置并盖章。</p>
+<p><b>入口：</b>左栏导航 → 批量盖章 → 按文字批量盖章。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>输入需要盖章的“目标文字”；</li>
+<li>设置匹配参数（可选）；</li>
+<li>点击「按文字放置印章」进行效果预览；</li>
+<li>预览效果后可点击“撤销放置”按钮取消，对印章点击鼠标右键可选择性删除印章。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>附近关键词：“目标文字”一定范围内出现“关键词”才符合盖章要求；</li>
+<li>上下文范围：设定“目标文字”前后多少字内出现“关键词”才符合盖章要求（默认 10 字）；</li>
+<li>匹配模式：全部关键词 / 任一关键词；</li>
+<li>中心偏移：调整盖章中心与“目标文字”中心的对齐偏移。</li>
+</ul>
+<p><b>注意事项：</b></p>
+<ul>
+<li>成功盖章的关键词自动存入搜索历史（近期 10 个），点输入框下拉可查看、可删除；</li>
+<li>图片型 PDF 没有文字层，不支持此方式；</li>
+<li>文件夹模式下对文件夹内所有文件生效，单文件模式对当前文件生效。</li>
+</ul>
+<div class="h">6.6 批处理文件盖章</div>
+<p><b>功能说明：</b>给文件夹内全部 PDF 批量盖章。</p>
+<p><b>入口：</b>左栏导航 → 批量盖章 → 批处理文件盖章。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>以文件夹模式导入 PDF 文件夹；</li>
+<li>设置页码范围与盖章位置；</li>
+<li>点击「批量放置印章」进行效果预览；</li>
+<li>预览效果后可点击“撤销放置”按钮取消，对印章点击鼠标右键可选择性删除印章。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>页码范围：所有页 / 首页 / 尾页 / 自定义；</li>
+<li>盖章位置：X / Y 百分比（以页面左上角为原点）。</li>
+</ul>
+<p><b>注意事项：</b>对文件夹内所有文件生效。</p>
+<div class="h">6.7 随机角度位移</div>
+<p><b>功能说明：</b>盖章时按设定范围随机旋转与位移，模拟手工盖章效果，避免每页印章完全一致。</p>
+<p><b>入口：</b>左上方开关与按钮。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>在工具条左侧开启「随机角度位移」开关；</li>
+<li>点击旁边的按钮打开参数面板；</li>
+<li>调整旋转与位移范围；</li>
+<li>正常盖章，效果自动应用。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>旋转角度：随机旋转范围；</li>
+<li>横向位移、纵向位移：随机位移范围。</li>
+</ul>
+<p><b>注意事项：</b>需与「盖章渲染」配合使用效果更佳。</p>
+<div class="h">6.8 盖章渲染</div>
+<p><b>功能说明：</b>模拟真实盖章的纹理与色调效果，让印章看起来像手工盖的。</p>
+<p><b>入口：</b>左上方开关与按钮。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>在工具条左侧开启「盖章渲染」开关；</li>
+<li>点击旁边的按钮打开参数面板；</li>
+<li>调整参数或使用参数预设；</li>
+<li>正常盖章，效果自动应用。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>明暗与纹理：浓淡不均 / 径向压印 / 局部露白；</li>
+<li>斑点：内部斑点 / 斑点大小；</li>
+<li>色调与过渡：渐变过渡 / 整体色偏；</li>
+<li>参数预设 1~4：可保存 / 加载 / 恢复默认。</li>
+</ul>
+<p><b>注意事项：</b>调试技巧：导入一个空白 PDF 页面，打开盖章渲染功能，在空白页面上盖几个章子，放大页面到能看清章子细节；在参数弹窗内调整各项参数观察章子变化，直到基本符合需求后保存参数，下次直接加载此参数即可。</p>
+<div class="h">6.9 文字水印</div>
+<p><b>功能说明：</b>给 PDF 或图片添加水印框，支持多行、自动换行、旋转与透明度调整。</p>
+<p><b>入口：</b>左栏导航「文」→ 添加文字水印。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>在左栏导航点击「文」启用文字水印；</li>
+<li>点击「添加文字水印」，在当前页添加水印框；</li>
+<li>双击框内文字进入编辑，输入水印内容；</li>
+<li>调整参数（字体、字号、颜色、透明度等），即时生效；</li>
+<li>确认效果后点击「生成结果文件」。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>字体：微软雅黑 / 宋体 / 黑体 / 楷体 / 仿宋；</li>
+<li>字号、颜色（快捷色板 + 自定义）、透明度、旋转、行距、字间距、对齐（左 / 中 / 右）；</li>
+<li>水印框操作：双击编辑；文字超出框宽自动换行；框下旋转 / 移动按钮；四角圆点缩放（文字随框自动调整大小）；</li>
+<li>水印框快捷键：复制：Ctrl+C；粘贴：Ctrl+V；删除：Delete 键；手动换行：Enter 键；</li>
+<li>预存水印框：对水印框右键，选择保存当前水印框，可将当前水印框内容与参数当做模板进行保存，下个文件可选择直接调用。</li>
+</ul>
+<p><b>注意事项：</b>水印模式与盖章模式互斥（PDF 模式）：启用文字水印后，预览区右上角出现模式提示条，水印模式下水印可编辑、不可盖章；盖章模式可以盖章、水印不可编辑。</p>
+<div class="h">6.10 预览视图与工具条</div>
+<p><b>功能说明：</b>预览区的视图切换与翻页、缩放、跳转操作。</p>
+<p><b>入口：</b>预览区上方悬浮工具条（PDF 与图片共用同一套）。</p>
+<p><b>视图说明：</b></p>
+<ul>
+<li>单页：一次显示一页——鼠标滚轮翻页；</li>
+<li>放大：页面按比例放大阅读——左键按住拖动页面；滚轮上下滚动阅读（滚到底 / 滚到顶自动翻到下一页 / 上一页）；Ctrl + 滚轮缩放；</li>
+<li>双页：两页并排预览，固定 100% 比例——鼠标滚轮翻页；</li>
+<li>四页 / 八页：多页网格浏览（每行 4 页 / 8 页，向下滚动浏览全部页面）——双击某页直接切回该页的单页视图。</li>
+</ul>
+<p><b>工具条说明：</b></p>
+<ul>
+<li>文件下拉框：切换当前文件 / 图片；</li>
+<li>◀ ▶ 上 / 下一页（图片模式为上一张 / 下一张）；</li>
+<li>页码输入框：输入后回车跳转页面；</li>
+<li>－ / ＋ 缩小 / 放大（Ctrl + 滚轮也可缩放）；</li>
+<li>「常驻 / 自动收起」：切换工具条显示方式。</li>
+</ul>
+<p><b>注意事项：</b></p>
+<ul>
+<li>四页、八页网格视图用于整体查看每页效果（含已放置的印章与水印展示），不能盖章或添加水印，需要编辑时软件会自动切回单页视图；</li>
+<li>双页视图固定 100% 比例，不可放大缩小；</li>
+<li>图片模式仅单页 / 放大两种视图。</li>
+</ul>
+<div class="h">6.11 输出设置</div>
+<p><b>功能说明：</b>输出结果文件的模式、格式、清晰度与命名规则。</p>
+<p><b>入口：</b>左栏导航 → 输出设置。</p>
+<p><b>操作步骤：</b></p>
+<ol>
+<li>选择输出模式；</li>
+<li>选择输出格式（可多选 PDF / JPG / PNG）；</li>
+<li>设置输出 DPI 与文件名后缀。</li>
+</ol>
+<p><b>参数说明：</b></p>
+<ul>
+<li>输出模式：合并模式（盖章 / 水印直接合入页面内容，合并后文字不可编辑）/ 叠加模式（盖章以可编辑元素浮于页面上）；</li>
+<li>输出格式：PDF / JPG / PNG 可多选（默认仅 PDF）；选择图片格式时，每个 PDF 输出到一个「源文件名_标记_格式名」文件夹内；</li>
+<li>输出 DPI：极高 300 / 高 200 / 标准 150 / 低 96 / 极低 72（默认标准），DPI 越大文件越清晰、占用空间越大；</li>
+<li>文件名后缀：可设置命名文字、编号位置（前 / 后）、递增类型（数字 / 字母）、位数与时间戳；默认「已处理V + 编号」。</li>
+</ul>
+<p><b>注意事项：</b></p>
+<ul>
+<li>输出 DPI 对合并（栅格化）模式与图片格式输出生效，叠加模式不受影响；</li>
+<li>图片模式下该设置区自动禁用（图片输出固定为原始图片格式）；</li>
+<li>同一源文件已存在的输出自动使用 V1、V2、V3 等版本号递增，不覆盖旧结果，例如 1.pdf 输出为 1_已处理V1.pdf；</li>
 <li>首次启动默认：不加骑缝章、手动点击盖章、合并模式、文字水印关闭。</li>
-</ol>
-<div class="h">十一、常见问题</div>
+</ul>
+<div class="h">七、常见问题</div>
 <div class="qa"><b>Q：如何调整印章尺寸，使其与真实印章一致？</b><p>A：导入一份盖有真实印章的 PDF 作参照，再导入对应的印章 PNG；在「印章参数」中调整尺寸，在参照 PDF 上盖章比对，反复微调直至一致。</p></div>
-<div class="qa"><b>Q：为什么生成的 PDF 变大了？</b><p>A：DPI 越高文件越大越清晰；「输出文件DPI」选标准 150 即可兼顾清晰度与文件大小。</p></div>
+<div class="qa"><b>Q：盖章操作，有什么技巧？</b><p>A：对印章点击右键，可以删除印章，批量印章可以根据需要选择性的删除。印章可以鼠标拖动微调位置。</p></div>
+<div class="qa"><b>Q：为什么生成的 PDF 变大了？</b><p>A：DPI 越高文件越大越清晰；「输出 DPI」选标准 150 即可兼顾清晰度与文件大小。</p></div>
 <div class="qa"><b>Q：如何给文件夹内所有文件盖章？</b><p>A：先选择文件夹，再在导航开启「批量盖章 → 批量（批处理文件）」或「按文字批量」，按参数设置后批量处理。</p></div>
 <div class="qa"><b>Q：如何让印章看起来像手工盖的？</b><p>A：开启工具条左侧「随机角度位移」并调节旋转角度与横纵位移，同时开启「盖章渲染」模拟真实纹理与色调，效果更接近手工。</p></div>
 <div class="qa"><b>Q：图片型 PDF 能按文字盖章吗？</b><p>A：不能。图片型 PDF 没有文字层，仅支持手动或批量位置盖章。</p></div>
 <div class="qa"><b>Q：图片能盖印章吗？</b><p>A：不能。图片模式仅支持文字水印，需要盖章请转为 PDF 文件导入。</p></div>
 <div class="qa"><b>Q：印章有白底怎么办？</b><p>A：在左侧导航选中「印章参数 → 去白」，调整容差去除白色背景。</p></div>
+<div class="qa"><b>Q：选了骑缝章，但是页面上看不到，是怎么回事？</b><p>A：骑缝章是按分割数进行分割的，如果文件页数较多，按自动分割会将骑缝章分割的很小，接近于看不到；可以手动将分割数调整为150-200左右。</p></div>
 <div class="qa"><b>Q：水印文字如何换行？如何调整大小？</b><p>A：双击水印框编辑文字，Enter 换行；文字超出框宽也会自动换行。拖动水印框、调整框大小，文字会随之自动调整大小。</p></div>
+<div class="qa"><b>Q：如何快速添加水印框？如何快速添加多个重复的水印框？</b><p>A：制作好水印框后，可以对水印框右键，保存当前水印框，后续就可以直接添加到页面；对水印框可以通过快捷键 Ctrl+C、V，或者鼠标右键复制粘贴水印框，快速添加多个重复的水印框。</p></div>
 <div class="qa"><b>Q：印章旋转后被切角是怎么回事？</b><p>A：部分非圆形印章，或印章在图片上不居中时，旋转时会被切边；建议在图片中给印章四边留空区域大一些，可避免旋转时裁切边缘；留白越大，相同尺寸下章内容显示越小，需自行调大印章尺寸。</p></div>
-<div class="qa"><b>Q：智能体说《智能体调用手册.md》每次启动会重置，我的使用习惯怎么保存？</b><p>A：告诉智能体你的习惯与成功经验，它会经你确认后写入「运行组件\智能体调用\补充手册.md」——<b>软件不会覆盖这个文件</b>，这个文件属于你与智能体交互工作后存留的经验记录，下次同类任务自动沿用。例如各种结合用户自身需求的任务，每个任务完成后，可以由智能体总结经验存放到补充手册内，这样随着用户的使用，智能体每次工作前可以参考同类的完成经验，进而越来越高效。</p></div>
+<div class="qa"><b>Q：智能体的工作模式是什么样的，工作效果好坏取决于什么？</b><p>A：在智能体工作模式下，本软件仅仅属于智能体的盖章工具，智能体理解了本软件的各种盖章方法，通过智能体与用户对话了解需求，来确定盖章页面、盖章位置等内容，然后智能体调用本软件来实施。具体的工作效果好坏，基本上取决于智能体本身、用户的需求描述等方面，本软件作为一个工具，不参与盖章决策。</p></div>
+<div class="qa"><b>Q：智能体的工作模式比人工使用软件的有什么优点？或者说智能体的工作模式更适合处理什么样的工作？</b><p>A：简单的、少量的文件处理，由人工处理更加方便。如果是重复性的，或者大量需要人工甄别的工作，可以尝试使用智能体处理，例如有 100 份文件，文件内容与页数均不相同，需要在某些特定位置盖章，无法通过按文字盖章识别，需要人工识别具体的盖章位置时：</p><p>1. 合同尾页双方公司盖章处、承诺书处、报价书尾页处等本公司名称的位置盖章，在正文内出现的公司名称处不盖章；</p><p>2. 某些页面上，两个公司名称离得很近，需要盖章在其中一个公司名称上，而印章不能压到另外一个公司名称。</p><p>以上均属于需要人工识别的工作，而印章软件无法做到这些工作，在以上工作量大时，可以尝试给智能体描述清楚需求，让智能体按规则调用盖章软件进行盖章。</p></div>
+<div class="qa"><b>Q：智能体说《智能体调用手册.md》每次启动会重置，我的使用习惯怎么保存？</b><p>A：告诉智能体你的习惯与成功经验，它会经你确认后写入「运行组件\智能体调用\补充手册.md」——软件不会覆盖这个文件，这个文件属于你与智能体交互工作后存留的经验记录，下次同类任务自动沿用。例如各种结合用户自身需求的任务，每个任务完成后，可以由智能体总结经验存放到补充手册内，这样随着用户的使用，智能体每次工作前可以参考同类的完成经验，进而越来越高效。</p></div>
 <div class="qa"><b>Q：智能体执行任务时产生的过程文件放在哪里？</b><p>A：统一放在「运行组件\智能体调用\智能体调用工作过程文件\」目录，可随时查看或清理，不影响软件使用。</p></div>
 </div>`
     };
   },
   computed:{
+      /* V1.0.0.46：DPI 禁用条件——图片模式整区禁用；PDF 模式"叠加+PDF"不转图 DPI 无意义（叠加+JPG/PNG 转图，DPI 生效） */
+      outDpiDisabled(){ const hasImg=(this.outFormatArr||[]).some(x=>x==='jpg'||x==='png'); return !!this.imgMode || (this.outputMode==='overlay' && !hasImg); },
+      /* V1.0.0.46 需求1：多页视图按钮文字 + grid 模式判断 */
+      gridBtnText(){ return {grid4:'四页',grid8:'八页'}[this.viewMode]||'多页'; },
+      gridMode(){ return this.viewMode==='grid4'||this.viewMode==='grid8'; },
+    gridCellStyle(){ /* V1.0.0.49：列数对齐视图名——4 页视图一行 4 列、8 页视图一行 8 列；gap=12px，n 列间隙=(n-1)*12，另含 .page-grid 左右 padding 12px → grid8 共减 96px、grid4 共减 48px（V48 只减 gap 致每行溢出 12px 换行）
+       V1.0.0.60：返回函数（模板 gridCellStyle(g)）——宽=列数分摊不变，高=格宽×该页 pt 高宽比（固定高度：图片加载前后一致→rect 定位准确不差行、滚动条稳定；failed 格回退 A4 比例）
+       V1.0.0.77：绝对定位行容器内 cell——高按页 pt 比例但 cap 到行高-8（超高页不溢出，行内垂直居中）；占位格高=行高-12；宽 calc 相对行容器内容宽（与原 .page-grid 内容宽一致） */
+      const _width=this.viewMode==='grid8' ? 'calc((100% - 96px)/8)' : 'calc((100% - 48px)/4)';
+      const _self=this;
+      return function(g){
+        const w=_self.gridCellWCalc(); /* V1.0.0.72：改用纯计算格宽（不读 DOM）——修复 4↔8 互切时读到上一视图旧格宽致格子比例错乱（4 页横向只显示上半部/8 页超长像两张拼） */
+        const rh=_self._gridRowH(); /* V1.0.0.77：统一行高基准（A4 高宽比+gap） */
+        let h;
+        if(g && g.placeholder){ h=rh-12; }
+        else if(g && g.ptW>0 && g.ptH>0){ h=w*(g.ptH/g.ptW); if(h>rh-8){ h=rh-8; } }
+        else { h=w*1.414; if(h>rh-8){ h=rh-8; } }
+        return { width:_width, height:Math.max(40,Math.round(h))+'px' };
+      };
+    },
+    /* V1.0.0.77：网格容器总高（恒定=全文档行数×行高+底部 padding）——绝对定位行容器实现页级虚拟化，滚动条从一开始就是完整文档高度；
+       加载/回收数据不改变容器高度 → 滚动位置精确稳定、向前补载插入不跳；依赖 gridCellTick 驱动 resize 重算
+       V1.0.0.78：尾部余量 26→50（底部提示条自身高约 34px，absolute bottom:4px 会向上侵入最后一行页面 → 文字与最后一行格子重叠） */
+    gridTotalH(){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return 0; }
+      void this.gridCellTick;
+      const cols=this.viewMode==='grid4'?4:8;
+      const total=this.pageCount||0; if(!total){ return 0; }
+      return Math.max(0, Math.ceil(total/cols)*this._gridRowH())+50;
+    },
+    /* V1.0.0.77：page→数据映射——gridPages 数据全量保留，O(1) 查页（滚动窗口渲染不逐页 find；加载完成 push/unshift 后自动重建） */
+    gridPageMap(){
+      const m={}; const gp=this.gridPages||[];
+      for(let k=0;k<gp.length;k++){ const g=gp[k]; if(g&&g.page){ m[g.page]=g; } }
+      return m;
+    },
+    /* V1.0.0.77：可视窗口行数据——只渲染视口±2 屏的行（gridWinTopRow/gridWinRows 由 gridOnScroll 滚动更新；gridCellTick 驱动 resize 重算）；
+       窗口内未加载页用占位对象（灰格"加载中"），数据加载到 gridPages 后自动替换为真实格；范围外页移除 DOM 但数据保留 */
+    gridWinRowsData(){
+      if(this.viewMode!=='grid4'&&this.viewMode!=='grid8'){ return []; }
+      void this.gridCellTick; void this.gridPages;
+      const cols=this.viewMode==='grid4'?4:8;
+      const total=this.pageCount||0; if(!total){ return []; }
+      const totalRows=Math.ceil(total/cols);
+      const topRow=Math.max(0, Math.min(totalRows-1, Number(this.gridWinTopRow)||0));
+      const visRows=Math.max(1, Number(this.gridWinRows)||1);
+      const from=Math.max(0, topRow-2), to=Math.min(totalRows-1, topRow+visRows+2);
+      const map=this.gridPageMap;
+      const arr=[];
+      for(let r=from; r<=to; r++){
+        const cells=[];
+        for(let c=1; c<=cols; c++){
+          const page=r*cols+c;
+          if(page>total){ break; }
+          const g=map[page];
+          if(g){ cells.push(g); }
+          else { cells.push({page:page, placeholder:true, url:'', stamps:[], wms:[], ptW:595, ptH:842, failed:false}); }
+        }
+        arr.push({row:r, cells:cells});
+      }
+      return arr;
+    },
       /* V2.4.0.53 批量：源文件夹（目录模式文件夹）与输出目录（保存目录，空则 源/已盖章） */
       batchSrc(){ if(!this.dirMode || !this.curFileList.length) return ''; const f=String(this.curFileList[0]).replace(/\\/g,'/'); return f.substring(0,f.lastIndexOf('/')); },
       batchOutDir(){ const sd=(this.saveDir||'').trim(); if(sd) return sd; return this.batchSrc ? this.batchSrc+'/已盖章' : ''; },
@@ -1599,6 +1936,7 @@ const app = createApp({
       set(v){ const b=this.wmSel; if(b){ b.colorArgb=this.wmHexToArgb(v); this.wmParamSave(); } }
     },
     previewPageStyle(){
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ return { margin:'52px auto auto auto', width:'100%', minHeight:'calc(100% - 52px)' }; } /* V1.0.0.47：网格视图 preview-page 撑满，列宽 calc 才有真实参照 */
       const enlarged = this.viewMode==='zoom' || (Number(parseFloat(this.zoomText))>100);
       // 对齐 WPF RelayoutPreview：单页/双页页面不足视口时上下左右居中（preview-page 撑满 + 内部 flex 居中，
       // 顶部预留 52px 悬浮工具条区，超高时自然滚动）；放大视图进入时左右居中（V2.4.0.9：margin 左右 auto 显式居中），
@@ -1613,6 +1951,10 @@ const app = createApp({
       const total=this.pageCount>0?this.pageCount:'–';
       const p=Number(this.curPage)||1;
       if(this.viewMode==='double' && this.pageCount>0 && p<this.pageCount){ return p+'-'+(p+1)+' / '+total; }
+      if(this.viewMode==='grid4'||this.viewMode==='grid8'){ /* V1.0.0.46 需求1：网格显示已加载页码范围 */
+        if(!this.gridPages.length){ return '… / '+total; }
+        return this.gridPages[0].page+'-'+this.gridPages[this.gridPages.length-1].page+' / '+total;
+      }
       return this.curPage+' / '+total;
     },
     /* V346：图片/PDF 共用同一套工具条——统一 computed（文件下拉/页码输入/缩放输入随模式映射） */
@@ -1636,6 +1978,16 @@ const app = createApp({
     /* V2.4.0.100：图片显示宽高（method，每次渲染现算，避免 computed 短路缓存） */
     imgDispW(){ if(!this.imgLoaded || !this.imgW) return 0; const fitW=Math.min(this.imgFitW||600, this.imgW); const zoom=(parseFloat(this.zoomText)||100)/100; return Math.max(10, Math.min(this.imgW, fitW*zoom)); },
     imgDispH(){ return this.imgDispW() * (this.imgH||1) / (this.imgW||1); },
+    /* V1.0.0.78：操作提示区渲染——先 HTML 转义（防文件名含 & < > 等破坏布局），再把《》片段包 strong 黑色加粗（v-html 使用，安全） */
+    _wrapNamesHtml(raw){
+      const s=String(raw||'');
+      if(!s){ return ''; }
+      const esc=s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      return esc.replace(/《([^《》]*)》/g,'<strong>《$1》</strong>');
+    },
+    opHintHtml(){ return this._wrapNamesHtml(this.opHint); },
+    /* V1.0.0.79：系统日志区渲染（与 opHint 同一规则——《文件名》黑色加粗；dir 链接行不走此方法保持可点击原文） */
+    logMsgHtml(m){ return this._wrapNamesHtml(m); },
     /* V2.4.0.95：Module-Entry 开启态动态效果——随机角度位移/盖章渲染 按钮文字渐变流动 + 1px 旋转光带边框（方案B 原型确认） —— 基于 V2.4.0.94 帮助补充 */
     ...window.PdfqModules.batchActions,
     ...window.PdfqModules.uiLayout,
@@ -1690,6 +2042,37 @@ const app = createApp({
         if(Number(parseFloat(this.zoomText)||100)<=100){ this.zoomText='125%'; }
       }
       else if(nv==='double'){ this.zoomText='100%'; }
+      else if(nv==='grid4'||nv==='grid8'){ /* V1.0.0.56：网格浏览固定 100%，从当前页所在行开始（单页第 20 页 → 网格顶部显示 17-20 行）
+        V1.0.0.60：锚定加载——目标行未加载时清空旧缓存直接从目标行首开始加载（千页 PDF 不再从第 1 页逐批爬），
+        前面未加载页由 gridTopPad 占位撑高、向上滚动触发 gridLoadPrev 向前补载；定位后 _gridJustLocated 锁定 curPage（选中框停留当前页，不被滚动同步覆盖到视口顶部第一格）
+        V1.0.0.63：切网格立即清零滚动位置（消除 4↔8 切换时旧布局滚动偏移闪现），随后由 _gridLocate 两步定位到目标行居中 */
+        this.zoomText='100%';
+        if(this.$refs.stage){ this.$refs.stage.scrollTop=0; }
+        this.gridWinTopRow=0; this.gridWinRows=1; /* V1.0.0.77：切网格重置虚拟化窗口（防 4↔8 互切残留旧窗口，随后由 _gridLocate/gridOnScroll 定位刷新） */
+        const _gcols=nv==='grid4'?4:8;
+        const _cur=Number(this.curPage)||1;
+        const _growStart=Math.floor((_cur-1)/_gcols)*_gcols+1;
+        const _self=this;
+        this.curPageInput=String(_cur); /* V1.0.0.64：切网格页码恒显示选中页（滚动不再改页码输入框） */
+        if(!this.pageCount || _cur<1 || _cur>this.pageCount){
+          /* 无有效当前页：常规从 1 加载，不锚定不定位 */
+          this.gridLoading=false; this.gridStart=1; this._gridScrollToPage=0; this.gridLoad(1);
+        } else if(this.gridPages.some(function(g){return g.page===_growStart;})){
+          /* 目标行已加载：_gridLocate 差值定位到该行顶部（含 150ms 二次校正防异步重排），锁定 curPage（保持当前页选中） */
+          this.$nextTick(function(){ if(typeof _self._gridLocate==='function'){ _self._gridLocate(_growStart); } if(typeof _self.gridOnScroll==='function'){ _self.gridOnScroll(); } });
+        } else {
+          /* 目标行未加载：清空旧缓存（隔批跳转旧缓存无意义），锚定目标行首全新加载；占位+向前补载覆盖前面页
+             V1.0.0.65：gridLoad 后立即并行 gridLoadPrev 向前补 32 页图片（不等首批渲染完，减少向上空白等待） */
+          this.gridLoading=false; this.gridPages=[]; this.gridStart=_growStart; this._gridScrollToPage=_growStart;
+          this.gridLoad(_growStart);
+          if(typeof this.gridLoadPrev==='function'){ this.gridLoadPrev(_growStart); } /* V1.0.0.65：并行向前补载（显式锚定起点，首次加载 gridPages 空也可补） */
+          if(this.$refs.stage){ this.$refs.stage.scrollTop=0; }
+        }
+        /* V1.0.0.57b：切回网格后刷新已加载页的水印预览（新加/修改的水印框在缓存页面上不可见问题）；V1.0.0.60：同时触发视口懒加载补章/水印浮层
+           V1.0.0.65：已加载分支预载锚定行 ±32 页章/水印（选中行上下先渲染一部分） */
+        this.$nextTick(function(){ if(typeof _self._gridRefreshWms==='function'){ _self._gridRefreshWms(); } if(typeof _self._gridResetVisibleStamps==='function'){ _self._gridResetVisibleStamps(); } if(typeof _self._gridLoadOverlays==='function'){ _self._gridLoadOverlays(_growStart); } });
+        if(this.pdfLoaded){ return; }
+      }
       // V346：图片模式切视图重算适配（单页=fit-to-view，放大=imgDispW 按 zoomText 现算）
       if(this.imgLoaded){ this.$nextTick(this.imgMeasure); return; }
       if(this.pdfLoaded){ this.renderPage(this.curPage); }
@@ -1724,7 +2107,8 @@ const app = createApp({
     curSeal(){ this.rangeActive=false; this._flushStampParams(); this.loadFromShell(); this._seamSync(); if(window.Bridge&&window.Bridge.invoke&&!this._shellLoading){ window.Bridge.invoke('SelectStamp',this.curSeal||''); } },
     /* v2.4.0.52：骑缝章预览——参数/印章/渲染页 pt 变化重算布局 */
     seamType(){ this._seamSync(); }, sealPos(){ this._seamSync(); }, posVal(){ this._seamSync(); },
-    segCount(){ this._seamSync(); }, pagePts(){ this._seamSync(); }, curPage(){ this._seamSync(); }, /* V2.4.0.162：水印框是全局的，翻页不重新加载 */
+    segCount(){ this._seamSync(); this.segDraft=this.segAuto?'自动':String(this.segCount||0); }, pagePts(){ this._seamSync(); }, curPage(){ this._seamSync(); }, /* V2.4.0.162：水印框是全局的，翻页不重新加载 */
+    segAuto(){ this.segDraft=this.segAuto?'自动':String(this.segCount||0); this._seamSync(); }, /* V1.0.0.69：自动/手动切换同步输入框显示值并重算骑缝章预览 */
     /* V2.4.0.96：选中框参数变化（含拖拽几何）→ 防抖持久化后端；颜色 setter 也走此链 */
     // wmSel watch 已删除（输出时统一用 ReplaceAllWatermarks）
   },
@@ -1735,6 +2119,21 @@ const app = createApp({
       this.loadNavState(); // V2.4.0.352：恢复左栏功能导航选中态（localStorage）
       // V2.4.0.358：测量导航区内容总高（scrollHeight 含 padding、不受滚动压缩影响）——grid 行1 上限以此为准：窗口升高优先让导航卡完整，之后高度给下方通栏
       this.$nextTick(()=>{ const nr=document.querySelector('.nav-rail'); if(nr && nr.scrollHeight>0) this.navH=nr.scrollHeight; });
+      // V1.0.0.57：恢复模式提示条拖拽位置（相对预览区左上角 px），无记录时保持默认右上角
+      // V1.0.0.62：恢复时按预览区尺寸钳制 6px 边距——V59 起坐标系=预览区；旧版本地存储可能是旧坐标系越界值，
+      // 直接恢复会让提示条落在错误/不可见位置（用户误判为"无法移动/没效果"）
+      this.$nextTick(()=>{ try{
+        const _p=JSON.parse(localStorage.getItem('pdfqfz_wmBannerPosV2')||'null');
+        if(_p && typeof _p.x==='number' && typeof _p.y==='number'){
+          const pv=this.$refs.stage?this.$refs.stage.getBoundingClientRect():null;
+          if(pv && pv.width>24 && pv.height>24){
+            const bw=Math.min(300, pv.width-12), bh=Math.min(120, pv.height-12);
+            _p.x=Math.max(6, Math.min(pv.width-bw-6, _p.x));
+            _p.y=Math.max(6, Math.min(pv.height-bh-6, _p.y));
+          }
+          this.bannerPos={x:Math.round(_p.x),y:Math.round(_p.y)};
+        }
+      }catch(e){} });
 
     // V101：Del 键删除选中水印框（图片/PDF 模式统一）
     const selfDel = this;
@@ -1744,7 +2143,7 @@ const app = createApp({
       // V271：ctrl+c / ctrl+v 复制粘贴水印框（输入框/文字编辑态不拦截，保留文本操作）
       const k = (e.key || '').toLowerCase();
       if (e.ctrlKey && !e.metaKey && (k === 'c' || k === 'v')) {
-        if (!selfDel.watermarkEnabled || inField || selfDel.wmEditingId) return;
+        if (!selfDel.watermarkEnabled || (!selfDel.wmEditMode && !selfDel.imgMode) || inField || selfDel.wmEditingId) return; /* V1.0.0.54：非编辑模式水印框只读，禁复制/粘贴 */
         if (k === 'c') {
           if (selfDel.wmSelId == null) return;
           const b = selfDel.wmBoxes.find(x => x.id === selfDel.wmSelId);
@@ -1757,7 +2156,7 @@ const app = createApp({
         return;
       }
       if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (!selfDel.watermarkEnabled) return;
+      if (!selfDel.watermarkEnabled || (!selfDel.wmEditMode && !selfDel.imgMode)) return; /* V1.0.0.54：非编辑模式禁 DEL 删除水印框 */
       if (inField) return;
       if (selfDel.wmEditingId) return;
       const id = selfDel.wmSelId;
@@ -1802,6 +2201,7 @@ const app = createApp({
     // 阶段8：生成结果/进度事件
     window.Bridge.on('generate-done', function(payload){
       self.generating=false;
+      self.genMerging=false; /* V1.0.0.78：生成结束复位动态点点点 */
       // V2.4.0.397：等级徽章计数（单文件/单次导出成功才计：按动作，盖章+1 / 水印+1）
       if (payload && payload.ok) {
         const st = payload.stats || {};
@@ -1812,10 +2212,12 @@ const app = createApp({
       }
       // V2.4.0.86：先追加逐文件日志（含"正在处理第 X/Y 个文件"），跳过与 summary 完全相同的重复消息——
       // 原实现 summary/输出目录/本次输出包含先写、logs 最后追加，导致"正在处理"被排到最后且"成功"重复两条
+      // V1.0.0.83：单文件日志已实时推送（generate-log 事件），此处 logs 仅兜底——过滤已实时显示的，避免重复
       if(payload && payload.logs && payload.logs.length){
-        const t=new Date(); const ts=[t.getHours(),t.getMinutes(),t.getSeconds()].map(function(x){return String(x).padStart(2,'0');}).join(':');
-        const dedup=payload.summary ? payload.logs.filter(function(m){ return String(m)!==String(payload.summary); }) : payload.logs;
-        self.logs=self.logs.concat(dedup.map(function(m){ return {ts:ts,msg:m}; })).slice(-200);
+        const live=(self._liveLogs||new Set());
+        const notLive=payload.logs.filter(function(m){ return !live.has(String(m)); });
+        const dedup=payload.summary ? notLive.filter(function(m){ return String(m)!==String(payload.summary); }) : notLive;
+        if(dedup.length){ const t=new Date(); const ts=[t.getHours(),t.getMinutes(),t.getSeconds()].map(function(x){return String(x).padStart(2,'0');}).join(':'); self.logs=self.logs.concat(dedup.map(function(m){ return {ts:ts,msg:m}; })).slice(-200); }
       }
       if(payload && payload.summary){ self.opHint=payload.summary; self.addLog(payload.summary,'imp'); }
       if(payload && payload.stats){
@@ -1830,11 +2232,13 @@ const app = createApp({
       const _odir=(payload&&payload.outDir?payload.outDir:self.saveDir);
       self.addLog('输出目录：'+_odir,'imp',_odir);
     });
-    window.Bridge.on('generate-progress', function(payload){ if(payload){ self.opHint=String(payload); } });
+    window.Bridge.on('generate-progress', function(payload){ if(payload){ const t=String(payload); self.opHint=t; self.genMerging=(t.indexOf('请勿关闭软件')>=0); /* V1.0.0.79：写盘文案统一含「请勿关闭软件」（单文件带页数「文件（X页）生成中」/文件夹带序号），命中即显示动态点点点；盖章/图片进度文案自动复位 */ } });
+    /* V1.0.0.83：单文件生成过程日志实时写系统日志区（原等 generate-done 一次性追加）——「正在处理第 1/1 个文件」处理开始时即显示 */
+    window.Bridge.on('generate-log', function(p){ if(p && p.msg){ self._liveLogs=(self._liveLogs||new Set()); self._liveLogs.add(String(p.msg)); self.addLog(String(p.msg), p.err===true); } });
     /* V2.4.0.53 文件夹批量处理事件 */
     window.Bridge.on('batch-progress', function(p){
       if(!p) return;
-      if(self._lastBatchIdx !== p.index){ self._lastBatchIdx = p.index; self.addLog('正在处理第 '+p.index+'/'+p.total+' 个文件：'+p.file); }
+      if(self._lastBatchIdx !== p.index){ self._lastBatchIdx = p.index; self.addLog('正在处理第 '+p.index+'/'+p.total+' 个文件：《'+p.file+'》'); } /* V1.0.0.78：文件名《》包裹（与 opHint 区一致） */
     });
     /* V2.4.0.81：批量放置异步化完成事件（BatchPreviewAll Task.Run → results 走事件收尾） */
     window.Bridge.on('batch-preview-done', function(p){
@@ -1874,18 +2278,20 @@ const app = createApp({
           if(fs.range) parts.push('指定范围页盖章 '+fs.range+' 枚');
           if(fs.text) parts.push('按文字盖章 '+fs.text+' 枚');
           if(fs.batch) parts.push('批量文件盖章 '+fs.batch+' 枚');
+          if(fs.imgCount>0) parts.push('输出图片 '+fs.imgCount+' 张（'+String(fs.imgFormats||'JPG')+'）'); // V1.0.0.47：图片格式输出信息
           // V2.4.0.405：输出文件名无条件显示（纯水印无章时 parts 为空此前被 if 拦掉，用户看不到文件名）；有章显示章数，无章显示「完成」
-          self.addLog('第'+(fs.index||'?')+'个文件「'+(fs.output||fs.name)+'」：'+(parts.length?parts.join('、'):'完成'),'imp');
+          self.addLog('第'+(fs.index||'?')+'个文件《'+(fs.output||fs.name)+'》：'+(parts.length?parts.join('、'):'完成'),'imp'); // V1.0.0.79：文件名《》包裹（日志区 strong 渲染黑色加粗）
         });
       }
-      (p.skipped||[]).forEach(function(s){ self.addLog('跳过：'+s.name+'（'+s.reason+'）', 'warn'); }); // V369：跳过=警告黄（规范：跳过黄/失败红）
-      (p.failed||[]).forEach(function(f){ self.addLog('失败：'+f.name+'（'+f.reason+'）', true); });
+      (p.skipped||[]).forEach(function(s){ self.addLog('跳过：《'+s.name+'》（'+s.reason+'）', 'warn'); }); // V1.0.0.79：文件名《》包裹（V369：跳过=警告黄）
+      (p.failed||[]).forEach(function(f){ self.addLog('失败：《'+f.name+'》（'+f.reason+'）', true); });
       // V2.4.0.405/407：输出目录放日志最后一条 + 可点击打开（C# batch-done 传真实 outDir，打开不再落到文档目录）
       const _bd=(p.outDir?p.outDir:self.batchOutDir);
       self.addLog('输出目录：'+_bd,'imp',_bd);
     });
     // v2.4.0.78：去掉 zoomText>100 条件——单页视图放大过 100% 后拖大窗口也应随窗口重算 fitPage（fitPage 内部按 zoom 比例重算），仅缩放模式（viewMode==='zoom'）跳过
-    window.addEventListener('resize',()=>{ if(this.imgLoaded && this.viewMode!=='zoom'){ this.imgMeasure(); } if(this.pdfLoaded && this.viewMode!=='zoom'){ this.fitPage(); } });
+    // V1.0.0.62：网格视图下窗口 resize 主动刷 gridCellTick（ResizeObserver 异步，拖拽窗口边缘时同步响应一次，确保格子/浮层/顶部占位随新宽度重算）
+    window.addEventListener('resize',()=>{ if(this.imgLoaded && this.viewMode!=='zoom'){ this.imgMeasure(); } if(this.pdfLoaded && this.viewMode!=='zoom'){ this.fitPage(); } if(this.pdfLoaded && (this.viewMode==='grid4'||this.viewMode==='grid8')){ this.gridCellTick=(this.gridCellTick||0)+1; } });
     // V2.4.0.80：写盘防抖的兜底 flush——页面卸载/隐藏时立即写最后一次（对齐 V47"中途关闭不丢参数"语义）
     window.addEventListener('pagehide', ()=>{ this._flushStampParams(); this._flushUiConfig(); });
     document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='hidden'){ this._flushStampParams(); this._flushUiConfig(); } });
@@ -1905,6 +2311,11 @@ app.component('help', Help);
 app.component('rei-arrow', ReiArrow);
 for (const [name,comp] of Object.entries(ElementPlusIconsVue)) app.component(name,comp);
 app.use(ElementPlus,{locale:{name:'zh-cn'}});
+/* V1.0.0.50：全局 JS/渲染异常捕获——grid 白屏排查（此前 JS 异常不可见，只能靠 _diag 打点） */
+(function(){
+  try{ window.addEventListener('error', function(ev){ try{ if(window.Bridge&&window.Bridge.invoke){ window.Bridge.invoke('DiagLog','[JS-ERR] '+(ev.message||'')+' @'+(ev.filename||'')+':'+(ev.lineno||0)); } }catch(e){} }, true); }catch(e){}
+  try{ app.config.errorHandler = function(err, vm, info){ try{ if(window.Bridge&&window.Bridge.invoke){ window.Bridge.invoke('DiagLog','[VUE-ERR] '+(err&&err.message?err.message:err)+' info='+(info||'')); } }catch(e2){} }; }catch(e){}
+})();
 app.mount('#app');
 </script>
   <div id="badge-upgrade-float" class="badge-upgrade-float"></div>

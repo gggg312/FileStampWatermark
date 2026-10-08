@@ -13,12 +13,87 @@ window.PdfqModules.watermarkActions = {
     /* ---------- methods ---------- */
         /* ---- 开关 ---- */
         onWatermarkEnable(v) {
-            this.watermarkEnabled = !!v; /* V2.4.0.361：导航=开关唯一入口——原卡内开关靠 v-model 先设 watermarkEnabled 再触发 change；V360 删开关后导航调此处未设字段，navCardOn 读 false 致文卡整卡不显示 */
-            if (window.Bridge && window.Bridge.invoke) { window.Bridge.invoke('SetWatermarkEnabled', !!v).then(function(){}, function(){}); }
-            if (v) { this.wmSect.main = true; this.refreshPageWatermarks(); }
-            else { this.wmSect.main = false; this.wmSelId = null; this.wmEditingId = null; }
-            this.opHint = v ? '文字水印已启用：点击「添加文字水印」在当前页加框，双击框编辑文字' : '文字水印已关闭（已放置的水印框保留，生成时不再输出）';
-            this.addLog(v ? '文字水印已启用' : '文字水印已关闭');
+            /* V1.0.0.54：watermarkEnabled=水印显示+输出开关——开启后常驻，导航不再关闭（导航只切 wmEditMode/wmSect.main）；关闭分支保留给内部/未来入口 */
+            const on = !!v;
+            this.watermarkEnabled = on;
+            if (window.Bridge && window.Bridge.invoke) { window.Bridge.invoke('SetWatermarkEnabled', on).then(function(){}, function(){}); }
+            if (on) { this.wmSect.main = true; this.wmEditMode = true; if(this.viewMode==='grid4'||this.viewMode==='grid8'){ this.setView('single'); } /* V1.0.0.46 需求1：网格仅浏览，开开关即切单页 */ this.refreshPageWatermarks(); }
+            else { this.wmSect.main = false; this.wmEditMode = false; this.wmSelId = null; this.wmEditingId = null; }
+            this.opHint = on ? '文字水印已启用：水印可编辑，不可盖章；点提示条「退出水印模式」后可盖章' : '文字水印已关闭（已放置的水印框保留，生成时不再输出）';
+            this.addLog(on ? '文字水印已启用' : '文字水印已关闭');
+        },
+
+        /* ---- V1.0.0.54：提示条按钮——编辑/只读切换（不碰控件区开合；进入时自动打开控件区） ---- */
+        toggleWmEditMode() {
+            if (this.wmEditMode) {
+                /* 退出编辑：正在编辑的框先 blur 保存 */
+                if (this.wmEditingId) { const ref=this.$refs['wmEdit-'+this.wmEditingId]; const el=Array.isArray(ref)?ref[ref.length-1]:ref; if(el) el.blur(); }
+                this.wmSelId = null; this.wmEditingId = null; this.wmEditMode = false; this.wmSect.main = false; /* V1.0.0.55：退出水印模式→水印卡整卡消失（含添加按钮，避免加了框却无法编辑） */
+                this.opHint = '已退出水印模式：可以盖章，水印只读';
+                this.addLog('已退出水印模式（可以盖章，水印只读）');
+            } else {
+                this.wmEditMode = true; this.wmSect.main = true; /* 进入：自动打开控件区 */
+                if (this.navState && this.navState.watermark) { this.navState.watermark.on = true; }
+                if (this._expandCard) { this._expandCard('watermark'); }
+                if (this._flashNav) { this._flashNav('watermark'); }
+                if (this.viewMode==='grid4'||this.viewMode==='grid8'){ this.setView('single'); } /* 网格仅浏览：进入编辑自动切单页 */
+                this.opHint = '已进入水印模式：水印可编辑，不可盖章';
+                this.addLog('已进入水印模式');
+            }
+        },
+
+        /* ---- V1.0.0.57：模式提示条移动（与水印框移动按钮同款交互：按住拖动、相对位移、预览区内钳制；位置持久化，重启恢复） ---- */
+        /* V1.0.0.57b：offX/offY 相对提示条当前实际 rect（默认右上角锚定或已持久化位置），拖动起点无跳动 */
+        /* V1.0.0.59：拖动重构——mousedown 时动态创建箭头闭包监听（不依赖 methods 自动绑定，消除事件层一切潜在失效）；坐标系基于 banner 实际定位祖先（.preview 容器 rect），与 CSS absolute 定位基准一致；banner 本体也支持按住拖动（自动排除内部控件）；全链路 _diag 打点便于日志定位 */
+        wmBannerStyle() {
+            if (!this.bannerPos) { return {}; }
+            return { left: this.bannerPos.x + 'px', top: this.bannerPos.y + 'px', right: 'auto' };
+        },
+        wmBannerDown(e, fromBody) {
+            if (e.button !== 0) return;
+            e.preventDefault(); e.stopPropagation();
+            if (fromBody) { /* banner 本体拖动：排除内部交互控件（切换按钮行、移动按钮、el-button） */
+                try { if (e.target && e.target.closest && e.target.closest('.wm-mode-btnrow,.wm-mode-btn,.wm-banner-move,.el-button')) { return; } } catch (err) {}
+            }
+            const el = this.$refs.wmBanner;
+            if (!el) return;
+            const r = el.getBoundingClientRect();
+            /* offX/offY 相对提示条当前左上角（默认右上角锚定或已持久化位置），拖动起点即当前位置，无跳动 */
+            this._bannerDrag = { offX: e.clientX - r.left, offY: e.clientY - r.top, w: r.width, h: r.height };
+            try { if (typeof this._diag === 'function') { this._diag('wmBannerDown: 拖动开始 off=(' + Math.round(this._bannerDrag.offX) + ',' + Math.round(this._bannerDrag.offY) + ') pos=' + JSON.stringify(this.bannerPos || null)); } } catch (err) {}
+            const self = this;
+            const move = function (ev) { self._wmBannerMove(ev); };
+            const up = function () { self._wmBannerMoveEnd(); };
+            this._wmBannerCleanup = function () { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+            window.addEventListener('mousemove', move);
+            window.addEventListener('mouseup', up);
+        },
+        _wmBannerMove(ev) {
+            try {
+                if (!this._bannerDrag) return;
+                const d = this._bannerDrag;
+                const el = this.$refs.wmBanner;
+                if (!el) return;
+                /* V1.0.0.59：坐标系用 banner 实际定位祖先（.preview 容器）——与 CSS absolute 定位基准一致（stage 在 toolbar 下方，若用 stage 会偏移跳位） */
+                const anchor = el.offsetParent || this.$refs.stage;
+                if (!anchor) return;
+                const ar = anchor.getBoundingClientRect();
+                let x = (ev.clientX - ar.left) - d.offX;
+                let y = (ev.clientY - ar.top) - d.offY;
+                x = Math.max(6, Math.min(ar.width - d.w - 6, x));
+                y = Math.max(6, Math.min(ar.height - d.h - 6, y));
+                this.bannerPos = { x: Math.round(x), y: Math.round(y) };
+                try { if (typeof this._diag === 'function') { this._diag('wmBannerMove: pos=' + JSON.stringify(this.bannerPos)); } } catch (err) {}
+            } catch (err) {
+                try { if (typeof this._diag === 'function') { this._diag('wmBannerMove 异常: ' + (err && err.message || err)); } } catch (err2) {}
+            }
+        },
+        _wmBannerMoveEnd() {
+            if (this._wmBannerCleanup) { try { this._wmBannerCleanup(); } catch (err) {} this._wmBannerCleanup = null; }
+            if (this._bannerDrag) {
+                try { localStorage.setItem('pdfqfz_wmBannerPosV2', JSON.stringify(this.bannerPos)); } catch (err) {}
+                this._bannerDrag = null;
+            }
         },
 
         /* ---- 数据拉取 ---- */
@@ -58,7 +133,7 @@ window.PdfqModules.watermarkActions = {
 
         /* ---- 样式 ---- */
         /* 框定位（外层）：位置/尺寸/旋转（旋转绕中心） */
-        wmOuterStyle(b, dispW, ptW, ptH) {
+        wmOuterStyle(b, dispW, ptW, ptH, tick) { /* V1.0.0.53：第5参 gridCellTick 仅作响应式依赖（resize 触发重渲染），内部不参与计算 */
             const dispH = dispW * ((ptH || 842) / (ptW || 595));
             // V1.0.0.15（方案A）：图片模式与 PDF 统一"框驱动字"——框 = 保存的框尺寸（b.w/b.h），字号随框高二分，
             //           文字在框内换行、超框显示不全（预览=输出）。原 V1.0.0.10 图片模式"框贴字"（框宽/高跟随文字、
@@ -115,7 +190,7 @@ window.PdfqModules.watermarkActions = {
             return fs;
         },
         /* 文字渲染（内层）：字号（含超宽收窄）/行距/字距/对齐/颜色/透明度/样式/装饰——与输出端 StampEngine.DrawTextWatermark 同公式 */
-        wmTextStyle(b, dispW, ptW, ptH) {
+        wmTextStyle(b, dispW, ptW, ptH, fsOverride, tick) { /* V1.0.0.52：第5参 fsOverride——grid 视图按格宽重算字号传入，不污染 wmFsMap；V1.0.0.53：第6参 gridCellTick 仅作响应式依赖（resize 触发重渲染），内部不参与计算 */
             const dispH = dispW * ((ptH || 842) / (ptW || 595));
             const bw = b.w * dispW, bh = b.h * dispH;
             const lines = String(b.text || '').split('\n');
@@ -124,7 +199,7 @@ window.PdfqModules.watermarkActions = {
             // fs 用 wmFsMap 持久化（跨 refreshPageWatermarks 保留）
             if (!this.wmFsMap) this.wmFsMap = {};
             // 只在调整文本框大小时重新计算字号（不在移动和旋转时重新计算）
-            let fs = this.wmFsMap[b.id];
+            let fs = (fsOverride && fsOverride > 0) ? fsOverride : this.wmFsMap[b.id];
             if (!fs || fs < 2) { var _side = this.wmSideDisp(b); if (_side) { var _dispH = _side.dispW * (_side.ptH / _side.ptW); fs = this.wmCalcFontSize(b, _side.dispW, _dispH); } }
             if (this._wmDiag && window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog", "[WM-FS-DIAG] b.id=" + b.id + " wmFsMap=" + (this.wmFsMap ? "yes" : "no") + " wmFsMap[b.id]=" + this.wmFsMap[b.id] + " b.h=" + b.h + " fs=" + fs);
             const ls = b.letterSpacing || 0;
@@ -405,15 +480,16 @@ window.PdfqModules.watermarkActions = {
         addWatermarkBox() {
             if (this.imgMode && this.imgLoaded) { return this.imgAddWatermarkBox(); }
             // V1.0.0.6: PDF 双页视图下添加文字水印 → 自动切回单页视图（双页下无法精确定位/编辑水印框，须先切单页再放框）
-            if (this.viewMode === 'double') { this.setView('single'); }
+            // V1.0.0.46 需求1：4/8 页网格仅浏览，同样切单页后再放框
+            if (this.viewMode === 'double' || this.viewMode === 'grid4' || this.viewMode === 'grid8') { this.setView('single'); }
             if (!window.Bridge) { this.opHint = '浏览器预览模式：请使用壳程序（EXE）'; return; }
             if (!this.pdfLoaded || this.debugActive) { this.opHint = '请先加载 PDF 文件再添加水印'; return; }
             const self = this;
             const x = 0.225, y = 0.42, w = 0.55, h = 0.08;
             const p = {
                 text: '双击编辑文字', fontName: '微软雅黑', fontScale: 0.8, colorArgb: 0xFF1F2329,
-                opacity: 100, bold: false, italic: false, underline: false, strike: false,
-                letterSpacing: 0, lineSpacing: 0, align: 1, rotation: 0  // V271 默认对齐=中
+                opacity: 40, bold: false, italic: false, underline: false, strike: false,
+                letterSpacing: 0, lineSpacing: 0, align: 1, rotation: 35  // V1.0.0.46：新建框默认 35° / 不透明度 40
             };
             var page = self.wmApplyAllPages ? 0 : (Number(self.curPage) || 1); window.Bridge.invoke('AddWatermarkBox', page, x, y, w, h, JSON.stringify(p)).then(function (json) {
                 let r = {}; try { r = JSON.parse(json); } catch (e) {}
@@ -459,6 +535,8 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
                             }
                             // V1.0.0.7: 新建框测宽调框宽后立即测换行快照（当前页 CSS 断行）；渲染/切图不再自动重测
                             if (typeof self.wmCaptureWrapLines === 'function') { try { self.wmCaptureWrapLines(b); } catch (e) {} }
+                            // V1.0.0.42：添加水印框后自动进入编辑状态（无需再双击）
+                            self.wmDblEditStart(b);
                         }
                     });
                     self.opHint = '已添加文字水印：双击水印框编辑文字；拖拽移动，四角缩放，下方按钮旋转/移动；右键删除';
@@ -514,6 +592,7 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
 
         /* ---- 交互：命中 + 拖拽 ---- */
         wmDown(e, b, hit) {
+            if (!this.wmEditMode && !this.imgMode) { return; } /* V1.0.0.54：PDF 非编辑模式水印框只读 */
             if (e.button !== 0) return;
             e.preventDefault(); e.stopPropagation();
             this.wmSelId = b.id;
@@ -645,6 +724,7 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
             window.removeEventListener('mousemove', this._wmDragHandler);
             window.removeEventListener('mouseup', this._wmDragUpHandler);
             if (this.wmDrag) {
+                var _savedByCapture = false; /* V1.0.0.38：缩放/旋转补测快照已全量保存时跳过 wmParamSave（两次 Update 合并为一次） */
                 /* V2.4.0.396: 先补测一次换行快照(拖拽中已跳过, 用最终几何/字号), 再保存——wmCaptureWrapLines 内部已全量 Update, wmParamSave 为几何兜底
                    V1.0.0.9: 单击选中（无拖动位移≤3px）不重测快照——应用方案后单击会触发重测覆盖方案保存的快照（换行/字号变化）；
                    仅真实拖动/缩放/旋转（鼠标位移>3px）才补测 */
@@ -658,10 +738,11 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
                         var _bb = this.wmDrag.box;
                         var _side = this.wmSideDisp(_bb);
                         if (_side && _side.dispW > 0) { var _dh = _side.dispW * _side.ptH / _side.ptW; this.wmFsMap[_bb.id] = this.wmCalcFontSize(_bb, _side.dispW, _dh); }
-                        this.wmCaptureWrapLines(_bb);
+                        this.wmCaptureWrapLines(_bb); /* V1.0.0.38：补测内部已全量 UpdateWatermarkBox——标记跳过随后的 wmParamSave */
+                        _savedByCapture = true;
                     }
                 }
-                this.wmParamSave();  // 拖拽结束后保存到 C# 端
+                if (!_savedByCapture) this.wmParamSave();  // V1.0.0.38：缩放/旋转已由补测保存；移动/单击仍走几何兜底
                 this.wmDrag = null;
             }
         },
@@ -690,6 +771,8 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
         },
         /* 双击编辑：contenteditable */
         wmDblEditStart(b) {
+            if (!this.wmEditMode && !this.imgMode) { return; } /* V1.0.0.54：PDF 非编辑模式禁双击编辑 */
+            if (this.wmEditText) delete this.wmEditText[b.id]; /* V1.0.0.45：进入编辑清残留编辑缓冲（上次 Esc 取消可能残留），防旧文字被误当本次输入 */
             this.wmSelId = b.id;
             this.wmEditingId = b.id;
             const self = this;
@@ -793,9 +876,15 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
             if (this._wmDiag && window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog", "[WM-EDIT-END] b.id=" + (b && b.id) + " hasRefresh=" + (typeof this.refreshImgWrapLines) + " imgMode=" + this.imgMode);
             const ref = this.$refs["wmEdit-" + b.id];
             const el = Array.isArray(ref) ? ref[ref.length - 1] : ref;
-            if (el && el.innerText !== undefined && el.innerText !== null) {
+            /* V1.0.0.45：退出编辑读取改双源——优先 wmEditText[b.id]（输入时实时同步的最新文字；DOM 可能被 Vue 重渲染
+               用 {{b.text}} 旧值/空值覆盖，只读 DOM 会误判空 → 误删有内容的框），DOM innerText 兜底；两源都空才删框 */
+            var editText = this.wmEditText && this.wmEditText[b.id];
+            if (editText !== undefined && editText !== null) {
+                b.text = String(editText).replace(/\n+$/, "");
+            } else if (el && el.innerText !== undefined && el.innerText !== null) {
                 b.text = String(el.innerText).replace(/\n+$/, "");
             }
+            if (this.wmEditText) delete this.wmEditText[b.id]; /* V1.0.0.45：退出即清编辑缓冲——防下次"清空文字退出"读到旧文字而不删空框（保持空框自动删除设计） */
             this._wmFlushEditResize(); /* V1.0.0.14：退出前立即应用挂起的框尺寸自适应（同步测高度），保证快照按最终尺寸测量 */
             this.wmEditingId = null;
             // 空文字 → 删除框（V1.0.0.8：原 wmRemoveBox 未定义会抛异常导致框残留；改前端即时移除+后端静默同步删除，
@@ -816,6 +905,7 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
         },
         wmDblEditCancel(b) {
             this._wmCancelWrapTimer(); // V2.4.0.356: 取消挂起的防抖测量
+            if (this.wmEditText) delete this.wmEditText[b.id]; /* V1.0.0.45：Esc 取消即清编辑缓冲——防残留文字被下次退出编辑误当本次输入 */
             this.wmEditingId = null;
         },
 
@@ -876,6 +966,26 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
             if (this._wmSaveTimer) { clearTimeout(this._wmSaveTimer); this._wmSaveTimer = null; }
             this.wmParamSave();
         },
+        /* V1.0.0.38：生成入口统一 flush——取消挂起换行防抖；若仍在编辑态，读 DOM/wmEditText 文字写回 b.text 并同步补测换行快照
+           （wmCaptureWrapLines 同步更新 b.wrapLines 三件套），确保生成时输出与当前预览一致（防 400ms 防抖窗口内旧文字/旧快照）。
+           PDF 端 generateFiles 与图片端 imgApplyOutput 在生成前调用；空文字写回后由后端按无框跳过处理（不在此删框）。 */
+        wmFlushBeforeGenerate() {
+            if (typeof this._wmCancelWrapTimer === 'function') { try { this._wmCancelWrapTimer(); } catch (e) {} }
+            if (!this.wmEditingId) return;
+            const ref = this.$refs["wmEdit-" + this.wmEditingId];
+            const el = Array.isArray(ref) ? ref[ref.length - 1] : ref;
+            let editingBox = null;
+            for (const arr of [this.wmBoxes, this.wmBoxesRight]) {
+                const f = (arr || []).find(function (b) { return b.id === this.wmEditingId; }.bind(this));
+                if (f) { editingBox = f; break; }
+            }
+            if (editingBox) {
+                const txt = (this.wmEditText && this.wmEditText[editingBox.id]) || (el ? String(el.innerText) : '');
+                editingBox.text = String(txt).replace(/\n+$/, '');
+                try { this.wmCaptureWrapLines(editingBox); } catch (e) {}
+            }
+            this.wmEditingId = null;
+        },
 
         /* ---- 方案管理 ---- */
         loadWmSchemes() {
@@ -894,7 +1004,7 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
         },
         wmSaveScheme() {
             const name = String(this.wmDlgSaveName || '').trim();
-            if (!name) { this.opHint = '请输入方案名称'; return; }
+            if (!name) { this.opHint = '请输入水印框名称'; return; }
             // 获取当前选中的水印框
             const b = this.wmBoxes.find(x => x.id === this.wmCtxMenu.boxId);
             if (!b) { this.opHint = '没有选中的水印框'; return; }
@@ -906,35 +1016,54 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
                 if (r.ok) {
                     self.wmDlgSave = false; self.wmDlgSaveName = '';
                     self.loadWmSchemes();
-                    self.opHint = '水印方案「' + name + '」已保存';
-                    self.addLog('水印方案「' + name + '」已保存', 'ok');
+                    self.opHint = '水印框「' + name + '」已保存'; /* 水印框名非文件名，保持「」引用 */
+                    self.addLog('水印框「' + name + '」已保存', 'ok');
                 } else { self.opHint = r.error || '保存失败'; self.addLog(r.error || '保存失败', true); }
             }, function (e) { self.opHint = '保存失败：' + e.message; });
         },
         wmApplyScheme() {
-            if (!this.wmSchemeCur) { this.opHint = '请先选择要应用的水印方案'; return; }
+            if (!this.wmSchemeCur) { this.opHint = '请先选择要应用的水印框'; return; }
             const self = this;
             window.Bridge.invoke('ApplyWatermarkScheme', this.wmSchemeCur).then(function (json) {
                 let r = {}; try { r = JSON.parse(json); } catch (e) {}
                 if (r.ok) {
                     if (self.imgMode) { self.refreshImgWatermarks(); } else { self.refreshPageWatermarks(); }
-                    self.opHint = '方案「' + self.wmSchemeCur + '」已应用到当前页（新增 ' + (r.count || 0) + ' 个框）';
+                    self.opHint = '方案「' + self.wmSchemeCur + '」已应用到当前页（新增 ' + (r.count || 0) + ' 个框）'; /* 方案名非文件名，保持「」引用 */
                     self.addLog('方案「' + self.wmSchemeCur + '」已应用到当前页', 'ok');
                 } else { self.opHint = r.error || '应用失败'; self.addLog(r.error || '应用失败', true); }
             }, function (e) { self.opHint = '应用失败：' + e.message; });
         },
         wmDelScheme() {
-            if (!this.wmSchemeCur) { this.opHint = '请先选择要删除的水印方案'; return; }
+            if (!this.wmSchemeCur) { this.opHint = '请先选择要删除的水印框'; return; }
             const self = this;
             const name = this.wmSchemeCur;
             window.Bridge.invoke('DeleteWatermarkScheme', name).then(function (r) {
                 if (String(r) === 'ok') {
                     self.wmSchemes = self.wmSchemes.filter(s => s !== name);
                     self.wmSchemeCur = '';
-                    self.opHint = '水印方案「' + name + '」已删除';
-                    self.addLog('水印方案「' + name + '」已删除', 'ok');
+                    self.opHint = '水印框「' + name + '」已删除'; /* 水印框名非文件名，保持「」引用 */
+                    self.addLog('水印框「' + name + '」已删除', 'ok');
                 } else { self.opHint = String(r); self.addLog(String(r), true); }
             }, function (e) { self.opHint = '删除失败：' + e.message; });
+        },
+        /* V1.0.0.42：下拉项内嵌删除（按名称删除，不依赖当前选中） */
+        wmDelSchemeByName(name) {
+            if (!name) return;
+            const self = this;
+            ElementPlus.ElMessageBox.confirm('确定删除水印框「' + name + '」吗？删除后不可恢复。', '删除水印框', {
+                confirmButtonText: '删除',
+                cancelButtonText: '取消',
+                type: 'warning'
+            }).then(function () {
+                window.Bridge.invoke('DeleteWatermarkScheme', name).then(function (r) {
+                    if (String(r) === 'ok') {
+                        self.wmSchemes = self.wmSchemes.filter(s => s !== name);
+                        if (self.wmSchemeCur === name) self.wmSchemeCur = '';
+                        self.opHint = '水印框「' + name + '」已删除'; /* 水印框名非文件名，保持「」引用 */
+                        self.addLog('水印框「' + name + '」已删除', 'ok');
+                    } else { self.opHint = String(r); self.addLog(String(r), true); }
+                }, function (e) { self.opHint = '删除失败：' + e.message; });
+            }).catch(function () { /* 用户取消：不做任何操作 */ });
         },
 
         /* ---- 右键菜单 ---- */
@@ -948,6 +1077,7 @@ if (window.Bridge && window.Bridge.invoke) window.Bridge.invoke("WriteDebugLog",
             if (this._wmCtxTimer) { clearTimeout(this._wmCtxTimer); this._wmCtxTimer = null; }
         },
         wmShowCtxMenu(e, boxId) {
+            if (!this.wmEditMode && !this.imgMode) { return; } /* V1.0.0.54：PDF 非编辑模式禁右键菜单 */
             window._wmVueInstance = this;
             this.wmCtxCancelClose();  // V1.0.0.7: 打开新菜单前取消挂起的延迟关闭
             // V271：纯状态驱动（菜单模板 v-if 渲染）；删除历史 DOM 直操/cloneNode/每次弹菜单重复挂监听

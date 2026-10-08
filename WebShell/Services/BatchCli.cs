@@ -291,6 +291,17 @@ namespace PDFQFZ.WebShell.Services
                     .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
                     .ToArray();
                 if (matched.Length > 0) return Path.GetFileName(matched[matched.Length - 1]);
+                // V1.0.0.48：图片输出格式（JPG/PNG）产物为同名文件夹（xxx_JPG/xxx_PNG），补目录匹配，反馈不再显示"已处理V?"
+                var matchedDirs = Directory.GetDirectories(outDir)
+                    .Where(d =>
+                    {
+                        string dn = Path.GetFileName(d);
+                        return dn.StartsWith(baseName + "_", StringComparison.OrdinalIgnoreCase)
+                            && (string.IsNullOrEmpty(mark) || dn.IndexOf(mark, StringComparison.OrdinalIgnoreCase) >= 0);
+                    })
+                    .OrderBy(d => d, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                if (matchedDirs.Length > 0) return Path.GetFileName(matchedDirs[matchedDirs.Length - 1]);
             }
             catch { }
             return baseName + "_" + mark + "?";
@@ -343,7 +354,7 @@ namespace PDFQFZ.WebShell.Services
             _done.Reset();
             string json = bridge.GenerateFiles(args.OutDir, args.Mode, args.Dpi, args.Mark, args.Pos, args.SeqType,
                 args.Pad, args.Ts, args.TsFormat, args.QfzType, args.WzType, args.WzPercent, args.MaxSplit,
-                false, args.Range, args.RangeStart, args.RangeEnd, args.XPct, args.YPct, true, false);
+                false, args.Range, args.RangeStart, args.RangeEnd, args.XPct, args.YPct, true, false, args.OutFormat);
             var g = Parse(json);
             if (Ok(g) && B(g, "started"))
             {
@@ -377,7 +388,7 @@ namespace PDFQFZ.WebShell.Services
             _done.Reset();
             string json = bridge.GenerateFiles(args.OutDir, args.Mode, args.Dpi, args.Mark, args.Pos, args.SeqType,
                 args.Pad, args.Ts, args.TsFormat, 1, 0, 50, 0,
-                false, 0, 1, 1, 50, 50, true, false);
+                false, 0, 1, 1, 50, 50, true, false, args.OutFormat);
             var g = Parse(json);
             if (Ok(g) && B(g, "started"))
             {
@@ -424,7 +435,7 @@ namespace PDFQFZ.WebShell.Services
             _done.Reset();
             string json = bridge.GenerateFiles(args.OutDir, args.Mode, args.Dpi, args.Mark, args.Pos, args.SeqType,
                 args.Pad, args.Ts, args.TsFormat, args.QfzType, args.WzType, args.WzPercent, args.MaxSplit,
-                false, args.Range, args.RangeStart, args.RangeEnd, args.XPct, args.YPct, true, false);
+                false, args.Range, args.RangeStart, args.RangeEnd, args.XPct, args.YPct, true, false, args.OutFormat);
             var g = Parse(json);
             if (Ok(g) && B(g, "started"))
             {
@@ -530,7 +541,7 @@ namespace PDFQFZ.WebShell.Services
                 if (stamp.ContainsKey("rotation")) sp.Rotation = I(stamp, "rotation", 0);
                 if (stamp.ContainsKey("opacity")) sp.Opacity = I(stamp, "opacity", 100);
                 if (stamp.ContainsKey("randomParams")) sp.RandomParams = B(stamp, "randomParams");
-                if (stamp.ContainsKey("randomRotation")) sp.RandomRange = I(stamp, "randomRotation", 45);
+                if (stamp.ContainsKey("randomRotation")) sp.RandomRange = I(stamp, "randomRotation", 30); // V1.0.0.80：智能体默认旋转 45→30（用户指令）
                 if (stamp.ContainsKey("randomOffsetXMm")) sp.RandomOffsetXMm = I(stamp, "randomOffsetXMm", 10);
                 if (stamp.ContainsKey("randomOffsetYMm")) sp.RandomOffsetYMm = I(stamp, "randomOffsetYMm", 10);
                 if (stamp.ContainsKey("textureQuality")) sp.TextureQuality = B(stamp, "textureQuality");
@@ -555,7 +566,7 @@ namespace PDFQFZ.WebShell.Services
 
         sealed class GenArgs
         {
-            public string OutDir, Mode, Mark, TsFormat;
+            public string OutDir, Mode, Mark, TsFormat, OutFormat;
             public int Dpi, Pos, SeqType, Pad, QfzType, WzType, WzPercent, MaxSplit, Range, RangeStart, RangeEnd, XPct, YPct;
             public bool Ts;
         }
@@ -567,6 +578,7 @@ namespace PDFQFZ.WebShell.Services
             var outCfg = task.ContainsKey("output") ? task["output"] as Dictionary<string, object> : null;
             args.Mode = (S(outCfg, "mode") ?? "merge").ToLowerInvariant() == "overlay" ? "overlay" : "merge";
             args.Dpi = I(outCfg, "dpi", 150);
+            args.OutFormat = (S(outCfg, "outFormat") ?? "pdf").ToLowerInvariant(); // V1.0.0.48：输出格式多选（逗号分隔，如 pdf,jpg）
             args.Mark = S(outCfg, "mark") ?? "已处理V";
             args.Pos = I(outCfg, "pos", 0);
             args.SeqType = I(outCfg, "seqType", 0);

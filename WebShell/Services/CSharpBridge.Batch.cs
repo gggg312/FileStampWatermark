@@ -307,10 +307,11 @@ namespace PDFQFZ.WebShell.Services
             }
             catch (Exception ex) { return "{\"ok\":false,\"error\":" + Json(ex.Message) + "}"; }
         }
-        /// <summary>批量核心：逐文件处理（读页数→范围交集→百分比钳制→独立 placements→PDFWatermark+压缩→进度事件）→ 汇总。</summary>
+        /// <summary>批量核心：逐文件处理（读页数→范围交集→百分比钳制→独立 placements→PDFWatermark+压缩→进度事件）→ 汇总。
+        /// outFormat（V1.0.0.46）：pdf=保持原格式；jpg/png=合并产物转图片（每 PDF 建同名文件夹放 p0001.* 系列）。</summary>
         private Dictionary<string, object> RunBatchFiles(List<string> files, string outDirT,
             int rangeMode, int rangeStart, int rangeEnd, int xPct, int yPct, bool clampEnabled,
-            int qfzType, int wzType, int wzPercent, int maxSplit, int dpi, int djType,
+            int qfzType, int wzType, int wzPercent, int maxSplit, int dpi, int djType, string outFormat,
             OutputNamingOptions naming, Bitmap seamImage, float xzbl, AppConfig.StampParams sp, string stampPath,
             List<StampPlacement> previewSnap, List<WatermarkBox> wmSnap = null)
         {
@@ -353,10 +354,7 @@ namespace PDFQFZ.WebShell.Services
                         }
                     }
                     ruleCount += fsBatch; // V2.4.0.67：批量章数=放置的批量放置章（batchId<0，多批次累加）
-                    fileStats.Add(new Dictionary<string, object> {
-                        ["index"] = idx, ["name"] = name, ["output"] = Path.GetFileName(outputPath),
-                        ["manual"] = fsManual, ["range"] = fsRange, ["text"] = fsText, ["batch"] = fsBatch
-                    });
+                    string outDisplay = Path.GetFileName(outputPath); // V1.0.0.46：图片格式时改显示同名文件夹名
                     var options = new StampOptions
                     {
                         StampImagePath = stampPath, OutputPath = outDirT, QfzType = qfzType,
@@ -379,8 +377,28 @@ namespace PDFQFZ.WebShell.Services
                     bool ok = StampEngine.PDFWatermark(options, seamImage, xzbl, file, output, file,
                         msg => { lastErr = msg; },
                         (d, t) => _postEvent(BatchProgress(idx, total, name, d, t)),
-                        active => { });
-                    if (ok && djType == 1) StampEngine.PDFToiPDF(output, dpi);
+                        active => { if (active) _postEvent("{\"kind\":\"generate-progress\",\"payload\":\"" + "文件生成中：第 " + idx + "/" + total + " 个文件，请勿关闭软件" + "\"}"); }); // V1.0.0.79：去掉文本省略号（动态点点由前端动画），文件夹模式带文件序号
+                    // V1.0.0.47：输出格式多选分流——勾选 pdf 时输出 PDF（合并栅格化/叠加可编辑）；勾选 jpg/png 时转图片（每格式同名文件夹 xxx_JPG/xxx_PNG，4 位页码 p0001）；可同时输出
+                    int imgCount = 0; var imgFormats = new List<string>();
+                    if (ok)
+                    {
+                        var fmts = StampEngine.ParseOutFormats(outFormat);
+                        bool wantPdf = fmts.Contains("pdf");
+                        if (wantPdf && djType == 1) StampEngine.PDFToiPDF(output, dpi);
+                        foreach (var fmt in fmts)
+                        {
+                            if (fmt == "pdf") continue;
+                            var imgs = StampEngine.PDFToImages(output, outDirT, Path.GetFileNameWithoutExtension(output), dpi, fmt,
+                                (d, t) => _postEvent("{\"kind\":\"generate-progress\",\"payload\":\"" + string.Format("正在输出图片：已完成 {0}/{1} 张（{2}%），文件：《{3}》", d, t, t > 0 ? (int)Math.Round(100.0 * d / t) : 0, name) + "\"}")); // V1.0.0.78：图片输出逐张百分比（文件夹批量入口）+ 文件名《》包裹
+                            if (imgs.Count > 0) { imgCount += imgs.Count; imgFormats.Add(fmt.ToUpperInvariant()); }
+                        }
+                        if (imgCount > 0 && !wantPdf) { try { File.Delete(output); } catch { } outDisplay = Path.GetFileNameWithoutExtension(output); }
+                    }
+                    fileStats.Add(new Dictionary<string, object> {
+                        ["index"] = idx, ["name"] = name, ["output"] = outDisplay,
+                        ["manual"] = fsManual, ["range"] = fsRange, ["text"] = fsText, ["batch"] = fsBatch,
+                        ["imgCount"] = imgCount, ["imgFormats"] = string.Join(",", imgFormats)
+                    });
                     if (ok) success.Add(name); else failed.Add(MkSkip(name, lastErr, file));
                 }
                 catch (Exception ex) { failed.Add(MkSkip(name, ex.Message, file)); }
@@ -447,10 +465,12 @@ namespace PDFQFZ.WebShell.Services
             };
         }
         /// <summary>生成文件（对齐 WPF RunStampBatchAsync + StampBatchWorker）：UI 线程校验/快照，
-        /// Task.Run 后台批处理，完成后推送 generate-done 事件。mode=merge|overlay；qfzType 0加盖/1不加/2单页/3双页/4随意。</summary>
+        /// Task.Run 后台批处理，完成后推送 generate-done 事件。mode=merge|overlay；qfzType 0加盖/1不加/2单页/3双页/4随意。
+        /// format（V1.0.0.46 需求3）：pdf/jpg/png 输出格式；jpg/png 时合并/叠加产物均转图片（每 PDF 同名文件夹 p0001.* 系列）。</summary>
         public string GenerateFiles(string outDir, string mode, int dpi, string mark, int pos, int seqType, int pad,
             bool ts, string tsFormat, int qfzType, int wzType, int wzPercent, int maxSplit, bool forceConfirm,
-            int batchRange, int batchStart, int batchEnd, int xPct, int yPct, bool clampEnabled, bool batchForce)
+            int batchRange, int batchStart, int batchEnd, int xPct, int yPct, bool clampEnabled, bool batchForce,
+            string format = "pdf")
         {
             try
             {
@@ -463,9 +483,9 @@ namespace PDFQFZ.WebShell.Services
                 try { Directory.CreateDirectory(outDirT); }
                 catch { WriteLog("[GEN-FAIL] 生成失败：无法创建输出目录（" + outDirT + "）"); return "{\"ok\":false,\"error\":\"无法创建输出目录\"}"; }
 
-                // V392：文字水印模式（watermarkEnabled）互斥盖章——生成强制「不加骑缝章」，
-                // 与前端预览“已进入文字水印模式，无法盖章”语义一致；纯水印任务不再被印章校验卡住（BUG4）
-                if (_watermarkEnabled) qfzType = 1;
+                // V1.0.0.75：骑缝章只与前端开关（seamType）相关——水印开关/水印框不干预 qfzType；
+                // 纯水印任务由前端传 qfzType=1（下方 L493 无章时不校验印章）保证，此处不再强制改写
+                // （V392 原「水印模式强制不加骑缝章」与 V54 水印开关常驻冲突，已由用户澄清取消）
                 bool wantsSeam = qfzType != 1;
                 bool hasStamps = _stampPlacements.Count > 0;
                 // V2.4.0.69：所见即所得，取消"无章确认"流程——无章也直接生成（输出=预览放置的章，无章即无章副本/仅骑缝章）。
@@ -547,7 +567,7 @@ namespace PDFQFZ.WebShell.Services
                                 var res = RunBatchFiles(filesB, outDirB2,
                                     batchRange, Math.Max(1, batchStart), Math.Max(1, batchEnd),
                                     xPct, yPct, clampEnabled,
-                                    qfzType, wzType, wzPercent, maxSplit, dpiB, djB, namingB,
+                                    qfzType, wzType, wzPercent, maxSplit, dpiB, djB, format, namingB,
                                     seamImage, xzbl, spB, stampPath, previewSnap, wmSnap);
                                 var statsB = BuildStampStats(_stampPlacements.Snapshot());
                                 statsB["batch"] = (res.TryGetValue("ruleCount", out object rc) && rc is int ri) ? ri : 0;
@@ -573,6 +593,7 @@ namespace PDFQFZ.WebShell.Services
                     OutDir = outDirT,
                     DjType = djType,
                     QualityDpi = dpi,
+                    OutFormat = format, // V1.0.0.46：输出格式贯通（StampBatchWorker 内分流）
                     NamingOptions = naming,
                     DirMode = false
                 };
@@ -590,9 +611,9 @@ namespace PDFQFZ.WebShell.Services
                     try
                     {
                         bool hasFailures = StampBatchWorker.Run(request, seamImage, xzbl,
-                            (m, e) => logs.Add((e ? "[失败] " : "") + m),
+                            (m, e) => { logs.Add((e ? "[失败] " : "") + m); _postEvent("{\"kind\":\"generate-log\",\"payload\":" + Json(new Dictionary<string, object> { ["msg"] = m, ["err"] = e }) + "}"); }, /* V1.0.0.83：单文件日志实时推送（原只收集 logs 等 generate-done 一次性发——「正在处理第 1/1 个文件」生成完毕才出现）；generate-done 的 logs 仍带作为兜底，前端去重 */
                             p => { /* 进度事件单独推送 */ _postEvent("{\"kind\":\"generate-progress\",\"payload\":" + Json(p) + "}"); },
-                            a => { });
+                            null); // V1.0.0.78：onSaving 已弃用——写盘提示文案改由 StampBatchWorker 内部经 onProgress 推送（单文件/文件夹分别带不带文件序号）
                         anyFail = hasFailures;
                     }
                     catch (Exception ex)

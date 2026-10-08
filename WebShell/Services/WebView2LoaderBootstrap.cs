@@ -73,13 +73,11 @@ namespace PDFQFZ.WPF.Services
                             return;
                         }
                     }
+                    // 成功写入后才置位：失败不置 ready，进程内可重试（不静默吞掉初始化失败）
+                    ready = true;
                 }
                 catch
                 {
-                }
-                finally
-                {
-                    ready = true;
                 }
             }
         }

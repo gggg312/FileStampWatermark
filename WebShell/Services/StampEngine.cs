@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -43,6 +43,8 @@ namespace PDFQFZ.WPF.Services
     /// </summary>
     internal static class StampEngine
     {
+        /// <summary>V1.0.0.38：文字水印高频诊断日志开关（默认关；config.ini diagWatermark=1 时由壳层启动注入）。关时跳过逐行/逐框写盘 I/O。</summary>
+        public static bool DiagEnabled = false;
         // ===== 打点结束 =====
 
         // ===================== 印章资源准备 =====================
@@ -209,8 +211,9 @@ namespace PDFQFZ.WPF.Services
                             waterMarkContent = pdfStamper.GetOverContent(page);
                             int rotation = pdfReader.GetPageRotation(page);
                             iTextSharp.text.Rectangle psize = pdfReader.GetPageSize(page);
+                            bool rotLand = (rotation == 90 || rotation == 270);
                             float pWidth, pHeight;
-                            if (rotation == 90 || rotation == 270)
+                            if (rotLand)
                             {
                                 pWidth = psize.Height;
                                 pHeight = psize.Width;
@@ -220,10 +223,11 @@ namespace PDFQFZ.WPF.Services
                                 pWidth = psize.Width;
                                 pHeight = psize.Height;
                             }
-                            // V1.0.0.32：横向页（rotation 90/270）骑缝章方向映射——现实装订横页"竖起来"与竖页一起盖：
+                            // V1.0.0.32：横向页骑缝章方向映射——现实装订横页"竖起来"与竖页一起盖：
                             // 竖右→横下、竖下→横左、竖左→横上、竖上→横右
+                            // V1.0.0.71：横向判定补"真横版"（rotation 0/180 且宽>高，MediaBox 本身横向），只认 rotation 时真横版不映射（用户实测回归）
                             int effWz = opt.WzType;
-                            if (rotation == 90 || rotation == 270)
+                            if (rotLand || (!rotLand && psize.Width > psize.Height))
                             {
                                 effWz = opt.WzType == 3 ? 0 : opt.WzType == 0 ? 2 : opt.WzType == 2 ? 1 : 3;
                             }
@@ -366,7 +370,7 @@ namespace PDFQFZ.WPF.Services
                         iTextSharp.text.Rectangle pageSize = pdfReader.GetPageSize(page);
                         float pageW = (pageRotation == 90 || pageRotation == 270) ? pageSize.Height : pageSize.Width;
                         float pageH = (pageRotation == 90 || pageRotation == 270) ? pageSize.Width : pageSize.Height;
-                        try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-DIAG] 输出 page=" + page + " 旋转=" + pageRotation + " 交换前WxH=" + pageSize.Width.ToString("F0") + "x" + pageSize.Height.ToString("F0") + " 交换后WxH=" + pageW.ToString("F0") + "x" + pageH.ToString("F0") + " 匹配水印框=" + (pageBoxes==null?0:pageBoxes.Count) + " 框Page字段=" + (pageBoxes!=null && pageBoxes.Count>0 ? string.Join("/", pageBoxes.Select(b=>b.Page.ToString())) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+                        if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-DIAG] 输出 page=" + page + " 旋转=" + pageRotation + " 交换前WxH=" + pageSize.Width.ToString("F0") + "x" + pageSize.Height.ToString("F0") + " 交换后WxH=" + pageW.ToString("F0") + "x" + pageH.ToString("F0") + " 匹配水印框=" + (pageBoxes==null?0:pageBoxes.Count) + " 框Page字段=" + (pageBoxes!=null && pageBoxes.Count>0 ? string.Join("/", pageBoxes.Select(b=>b.Page.ToString())) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
                         foreach (WatermarkBox box in pageBoxes)
                         {
                             try { DrawTextWatermark(wmContent, box, pageW, pageH); }
@@ -379,13 +383,13 @@ namespace PDFQFZ.WPF.Services
             }
             catch (BadPasswordException)
             {
-                log("文件“" + Path.GetFileName(inputfilepath) + "”打不开：PDF 密码错误或文件已加密。");
+                log("文件《" + Path.GetFileName(inputfilepath) + "》打不开：PDF 密码错误或文件已加密。"); // V1.0.0.79：文件名《》统一
                 return false;
             }
             catch (Exception ex)
             {
                 try { System.IO.File.AppendAllText(System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "运行组件", "pdfqfz_error.log"), System.DateTime.Now.ToString("HH:mm:ss") + " " + ex.ToString() + "\\r\\n---\\r\\n"); } catch { }
-                log("文件“" + Path.GetFileName(inputfilepath) + "”盖章失败：" + ex.Message);
+                log("文件《" + Path.GetFileName(inputfilepath) + "》盖章失败：" + ex.Message); // V1.0.0.79：文件名《》统一
                 return false;
             }
             finally
@@ -479,7 +483,7 @@ namespace PDFQFZ.WPF.Services
         private static void DrawTextWatermark(PdfContentByte cb, WatermarkBox box, float pageW, float pageH)
         {
             if (box == null) return;
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] DrawTextWatermark pageW=" + pageW.ToString("F1") + " pageH=" + pageH.ToString("F1") + " box.Page=" + box.Page + " X=" + box.X + " Y=" + box.Y + " W=" + box.W + " H=" + box.H + " h0=" + box.H0 + " fontScale=" + box.FontScale + " text=" + (box.Text ?? "").Substring(0, Math.Min(30, (box.Text ?? "").Length)) + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] DrawTextWatermark pageW=" + pageW.ToString("F1") + " pageH=" + pageH.ToString("F1") + " box.Page=" + box.Page + " X=" + box.X + " Y=" + box.Y + " W=" + box.W + " H=" + box.H + " h0=" + box.H0 + " fontScale=" + box.FontScale + " text=" + (box.Text ?? "").Substring(0, Math.Min(30, (box.Text ?? "").Length)) + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             string raw = box.Text ?? "";
             string[] rawLines = raw.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             List<string> lines = new List<string>();
@@ -499,7 +503,7 @@ namespace PDFQFZ.WPF.Services
             //        与图片引擎（ImageWatermarkEngine.DrawBox V303）同源：有快照直接用（所见即所得，横竖页一致），
             //        无快照（旧方案/旧数据/纯后端）才用 iText 逐字符测量重排兜底（原逻辑逐位不变，零回归）。
             bool useWrapLines = (box.WrapLines != null && box.WrapLines.Count > 0);
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] useWrapLines=" + useWrapLines + " box.WrapLines.Count=" + (box.WrapLines==null?0:box.WrapLines.Count) + " 快照行=" + (box.WrapLines!=null?string.Join("|", box.WrapLines.Where(l=>!string.IsNullOrEmpty(l)).Take(6).Select(l=>l.Substring(0, Math.Min(12, l.Length)))):"") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] useWrapLines=" + useWrapLines + " box.WrapLines.Count=" + (box.WrapLines==null?0:box.WrapLines.Count) + " 快照行=" + (box.WrapLines!=null?string.Join("|", box.WrapLines.Where(l=>!string.IsNullOrEmpty(l)).Take(6).Select(l=>l.Substring(0, Math.Min(12, l.Length)))):"") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             if (useWrapLines)
             {
                 lines.Clear();
@@ -534,7 +538,7 @@ namespace PDFQFZ.WPF.Services
                 }
                 lines = autoLines;
             }
-            try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] fs=" + fs.ToString("F1") + " fsToS=" + box.FsToS.ToString("F6") + " shortEdge=" + Math.Min(pageW, pageH).ToString("F1") + " boxWpt=" + boxWpt.ToString("F1") + " boxHpt=" + boxHpt.ToString("F1") + " lines=" + lines.Count + " firstLine=" + (lines.Count > 0 ? lines[0].Substring(0, Math.Min(20, lines[0].Length)) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+            if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT] fs=" + fs.ToString("F1") + " fsToS=" + box.FsToS.ToString("F6") + " shortEdge=" + Math.Min(pageW, pageH).ToString("F1") + " boxWpt=" + boxWpt.ToString("F1") + " boxHpt=" + boxHpt.ToString("F1") + " lines=" + lines.Count + " firstLine=" + (lines.Count > 0 ? lines[0].Substring(0, Math.Min(20, lines[0].Length)) : "") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
             if (fs < 0.5f) return;
 
             cb.SaveState();
@@ -542,9 +546,15 @@ namespace PDFQFZ.WPF.Services
             {
                 PdfGState gs = new PdfGState(); // iTextSharp PdfGState 不实现 IDisposable：SaveState/RestoreState 管理，无需 using
                 float op = box.Opacity / 100f;
-                gs.FillOpacity = op < 0.01f ? 0.01f : (op > 1f ? 1f : op);
+                float fillOpacity = op < 0.01f ? 0.01f : (op > 1f ? 1f : op);
+                gs.FillOpacity = fillOpacity;
+                gs.StrokeOpacity = fillOpacity; /* V1.0.0.41：下划线/删除线为 stroke 绘制，StrokeOpacity 此前未设置（默认1=不透明），输出透明度与预览不一致；PdfGState 属性为 write-only 故用局部变量 */
+
                 cb.SetGState(gs);
                 int rgb = box.ColorArgb & 0xFFFFFF;
+                iTextSharp.text.BaseColor wmColor = new iTextSharp.text.BaseColor((rgb >> 16) & 0xFF, (rgb >> 8) & 0xFF, rgb & 0xFF);
+                cb.SetColorFill(wmColor);    /* V1.0.0.39：PDF文字水印颜色此前未应用到 iText 绘制（恒黑），此处补齐；下划线/删除线同色 */
+                cb.SetColorStroke(wmColor);
 
                 BaseFont font = GetWatermarkFont(box.FontName, box.Bold);
                 float lineH = fs * Math.Max(0.5f, 1f + box.LineSpacing / 100f);
@@ -574,7 +584,7 @@ namespace PDFQFZ.WPF.Services
                     float lw = 0;
                     float[] charWidths = new float[n];
                     for (int ci = 0; ci < n; ci++) { float cw = font.GetWidth(line[ci].ToString()) * fs / 1000f; if (box.LetterSpacing > 0) cw += box.LetterSpacing; charWidths[ci] = cw; lw += cw; }
-                    try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT-LINE] li=" + li + " 行内容=[" + line.Substring(0, Math.Min(16, line.Length)) + "] 字符数=" + n + " lw=" + lw.ToString("F1") + " boxWpt=" + boxWpt.ToString("F1") + " 占比=" + (boxWpt>0?(lw/boxWpt).ToString("F3"):"0") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
+                    if (DiagEnabled) try { System.IO.File.AppendAllText(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "wm_debug.log"), DateTime.Now.ToString("HH:mm:ss.fff") + " [WM-OUT-LINE] li=" + li + " 行内容=[" + line.Substring(0, Math.Min(16, line.Length)) + "] 字符数=" + n + " lw=" + lw.ToString("F1") + " boxWpt=" + boxWpt.ToString("F1") + " 占比=" + (boxWpt>0?(lw/boxWpt).ToString("F3"):"0") + Environment.NewLine, System.Text.Encoding.UTF8); } catch { }
                     // 未旋转行起点（按对齐；y = 行中心 y-up）
                     float lineStartX0 = box.X * pageW;
                     if (box.Align == 1) lineStartX0 += (boxWpt - lw) / 2f;
@@ -622,12 +632,27 @@ namespace PDFQFZ.WPF.Services
 
         // ===================== 图片处理 =====================
         /// <summary>按放置参数生成最终印章位图（去白/透明度/旋转）。供预览叠加与盖章共用。</summary>
-        public static Bitmap CreatePlacementBitmap(StampPlacement placement)
+        public static Bitmap CreatePlacementBitmap(StampPlacement placement, float scale = 1f)
         {
             // V2.4.0.62：空/无效印章路径抛明确异常，替代 new Bitmap("") 的 "路径的形式不合法" 模糊信息
             if (placement == null || string.IsNullOrWhiteSpace(placement.StampPath) || !System.IO.File.Exists(placement.StampPath))
                 throw new InvalidOperationException("印章图片不存在或路径无效：" + (placement == null ? "(空)" : placement.StampPath));
             Bitmap processed = new Bitmap(placement.StampPath);
+            // V1.0.0.70：网格专用小图渲染——管线入口先按 scale 缩放（去白/透明度/纹理/旋转都在小图上做），
+            // 比"渲染原尺寸再缩小"省下全部像素级处理开销（面积 1/16 → 渲染+编码快约 16 倍）；默认 1f 原尺寸逻辑不变
+            if (scale > 0f && scale < 0.999f && processed.Width > 16 && processed.Height > 16)
+            {
+                int nw = Math.Max(1, (int)Math.Round(processed.Width * scale));
+                int nh = Math.Max(1, (int)Math.Round(processed.Height * scale));
+                var scaled = new Bitmap(nw, nh);
+                using (var g = Graphics.FromImage(scaled))
+                {
+                    g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g.DrawImage(processed, 0, 0, nw, nh);
+                }
+                processed.Dispose();
+                processed = scaled;
+            }
             if (placement.UseWhiteTransparency)
             {
                 Bitmap transparent = WhiteTransparencyHelper.Apply(processed, placement.WhiteTransparencyTolerance);
@@ -655,7 +680,8 @@ namespace PDFQFZ.WPF.Services
                     placement.TextureCast,
                     placement.TextureKb, placement.TextureKblob, placement.TextureKgrad,
                     placement.TextureKwhite, placement.TextureKspot,
-                    placement.TextureKradial, placement.TextureKcast);
+                    placement.TextureKradial, placement.TextureKcast,
+                    scale); // V1.0.0.76：网格小图（scale=0.25）纹理斑点随位图缩放——斑点相对章子比例与单页视图一致
             }
 
             // 随机旋转的章：位图不旋转（布局尺寸恒定=SizeMm，宽高比不变，杜绝“同一批章有大有小”）；
@@ -737,7 +763,8 @@ namespace PDFQFZ.WPF.Services
             int brightness, int blob, int gradient, int white, int spot,
             int radial, int cast,
             float kb, float kblob, float kgrad, float kwhite, float kspot,
-            float kradial, float kcast)
+            float kradial, float kcast,
+            float scale = 1f) // V1.0.0.76：网格小图 scale=0.25 时斑点像素尺寸/簇数随位图缩放，与单页渲染相对比例一致
         {
             // 分布随机（噪声/方向/斑点位置，固定于本章，与参数无关 → 调参时分布稳定）
             Random distRnd = new Random(seed);
@@ -865,7 +892,9 @@ namespace PDFQFZ.WPF.Services
                     }
                 }
                 // 斑点密度 = 参数上限 × 本章系数（调参平滑变化、章与章不同）；V2.3.2.5 内部最大值按 60% 档封顶（100 ≈ 原 60 档）
-                int clusterCount = (int)Math.Round(spot / 100.0 * 297.0 * kspot);
+                // V1.0.0.76：簇数 × scale²（面积比）——网格小图与原尺寸密度一致，避免小图斑点过密
+                int clusterCount = (int)Math.Round(spot / 100.0 * 297.0 * kspot * scale * scale);
+                if (clusterCount < 3) clusterCount = 3;
                 // 斑点尺寸（V2.3.2.7）：三三开——1/3 放大（×1~2.5，blob=100）、1/3 不变、1/3 去掉；
                 // 大点突出、总数自然减少 1/3、不显密；上限恢复 ×1.5（V2.3.2.5 前水平，且 blobBoost 已移除不会再放大浓淡不均）
                 using (Graphics gs = Graphics.FromImage(dst))
@@ -894,7 +923,8 @@ namespace PDFQFZ.WPF.Services
                             continue;
                         }
                         int clusterSize = 1 + distRnd.Next(5); // 1~5 个点：孤立或连片
-                        int spread = Math.Max(2, (int)Math.Round(8.0 * spotSizeScale)); // 簇散布
+                        // V1.0.0.76：散布随位图缩放（网格小图与原尺寸相对一致）
+                        int spread = Math.Max(2, (int)Math.Round(8.0 * spotSizeScale * scale)); // 簇散布
                         for (int j = 0; j < clusterSize; j++)
                         {
                             int ox = cx + distRnd.Next(-spread, spread + 1);
@@ -908,7 +938,8 @@ namespace PDFQFZ.WPF.Services
                             {
                                 continue;
                             }
-                            int r = Math.Max(1, (int)Math.Round((1 + distRnd.Next(3)) * spotSizeScale));
+                            // V1.0.0.76：斑点半径随位图缩放（网格小图与原尺寸相对一致）
+                            int r = Math.Max(1, (int)Math.Round((1 + distRnd.Next(3)) * spotSizeScale * scale));
                             int al = 100 + distRnd.Next(156);            // 半透明~实色
                             Color cc = inkColors.Count > 0
                                 ? inkColors[distRnd.Next(inkColors.Count)]
@@ -1172,28 +1203,30 @@ namespace PDFQFZ.WPF.Services
             Bitmap[] nImage = new Bitmap[n];
             int H = img.Height;
             int W = img.Width;
-            int w1 = W / 3;
-            int w = (W - w1) / n;
-            n = n - 1;
+            /* V1.0.0.68：均分切片（用户要求平均分布，不再首片 W/3 大、末片剩余大、中间小）；超长文档（如 1023 页、分割数自动=页数）
+               中间片整数除法归 0 时保底 1px（用户实测"骑缝章只盖第 1 页和最后一页"），源矩形钳制防越界
+               V1.0.0.69：首页切片保底章宽/20——n≤20 均分天然满足；n>20 首页放大到 W/20 保证首页永远可见骑缝章，
+               其余 n-1 片均分剩余宽（余数均匀分配到前几片，避免末片吸收余数偏大）；n==1 整章 */
+            if (n <= 1) { return new Bitmap[] { (Bitmap)img.Clone() }; }
+            int wAvg = W / n; if (wAvg < 1) wAvg = 1;
+            int nFirst = W / 20; if (nFirst < 1) nFirst = 1;
+            if (nFirst < wAvg) nFirst = wAvg;
+            if (nFirst > W) nFirst = W;
+            int wBase = (W - nFirst) / (n - 1); if (wBase < 1) wBase = 1;
+            int rem = (W - nFirst) - wBase * (n - 1);
             int tmpw = W;
-            for (int i = 0; i <= n; i++)
+            for (int i = 0; i < n; i++)
             {
                 int sw;
-                if (i == n)
-                {
-                    sw = tmpw;
-                }
-                else if (i == 0)
-                {
-                    sw = w1;
-                }
-                else
-                {
-                    sw = w;
-                }
+                if (i == 0) sw = nFirst;
+                else sw = wBase + ((i - 1) < rem ? 1 : 0);
+                if (sw > tmpw) sw = tmpw > 0 ? tmpw : 1;
+                int srcX = W - tmpw;
+                if (srcX < 0) srcX = 0;
+                if (srcX > W - sw) srcX = W - sw;
                 Bitmap newbitmap = new Bitmap(sw, H);
                 Graphics g = Graphics.FromImage(newbitmap);
-                g.DrawImage(img, new Rectangle(0, 0, sw, H), new Rectangle(W - tmpw, 0, sw, H), GraphicsUnit.Pixel);
+                g.DrawImage(img, new Rectangle(0, 0, sw, H), new Rectangle(srcX, 0, sw, H), GraphicsUnit.Pixel);
                 g.Dispose();
                 nImage[i] = newbitmap;
                 tmpw = tmpw - sw;
@@ -1253,6 +1286,91 @@ namespace PDFQFZ.WPF.Services
                         if (bitmap != null) bitmap.Dispose();
                     }
                 }
+                if (!string.Equals(renderPath, pdfPath, StringComparison.OrdinalIgnoreCase))
+                {
+                    PreviewPdfPreparation.TryDelete(renderPath);
+                }
+            }
+        }
+
+        /// <summary>V1.0.0.47：解析输出格式集合（逗号/分号分隔，如 "pdf,jpg"）。空或全无效→默认 pdf；去重。</summary>
+        public static List<string> ParseOutFormats(string f)
+        {
+            var list = new List<string>();
+            if (!string.IsNullOrWhiteSpace(f))
+            {
+                foreach (var part in f.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var p = part.Trim().ToLowerInvariant();
+                    if (p == "pdf" || p == "jpg" || p == "png") { if (!list.Contains(p)) list.Add(p); }
+                }
+            }
+            if (list.Count == 0) list.Add("pdf");
+            return list;
+        }
+
+        /// <summary>PDF 转图片输出（V1.0.0.46 需求3：输出格式 JPG/PNG；V1.0.0.47 文件夹名带格式标识 xxx_JPG/xxx_PNG 并单页渲染容错）。
+        /// 输出规则：outDir 下按 baseName 建同名文件夹，图片按页码命名 p0001.jpg/p0002.jpg…（4 位页码保证 9999+ 页排序不乱）。
+        /// 图片质量跟随 dpi（JPG 编码质量固定 90）；渲染展平（含章/水印已合入，等价合并模式产物）。
+        /// 返回输出文件完整路径列表（调用方负责删除中间 PDF 并写汇总日志）。</summary>
+        public static List<string> PDFToImages(string pdfPath, string outDir, string baseName, int dpi, string format, Action<int, int> imgProgress = null)
+        {
+            var outputs = new List<string>();
+            if (dpi < 72) dpi = 72;
+            if (dpi > 600) dpi = 600;
+            if (string.IsNullOrWhiteSpace(baseName)) baseName = Path.GetFileNameWithoutExtension(pdfPath);
+            bool jpg = string.Equals(format, "jpg", StringComparison.OrdinalIgnoreCase);
+            if (!jpg && !string.Equals(format, "png", StringComparison.OrdinalIgnoreCase)) jpg = true; // 兜底 jpg
+            // V1.0.0.47：文件夹名带格式标识（多格式同出不冲突，用户可辨识内容格式）
+            string folder = Path.Combine(outDir, baseName + "_" + (jpg ? "JPG" : "PNG"));
+            Directory.CreateDirectory(folder);
+            string renderPath = pdfPath;
+            try
+            {
+                renderPath = PreviewPdfPreparation.CreateAnnotationFlattenedCopy(pdfPath);
+                using (IPdfDocumentRenderer pdfRenderer = PdfiumDocumentRenderer.Open(renderPath))
+                {
+                    for (int i = 0; i < pdfRenderer.PageCount; i++)
+                    {
+                        // V1.0.0.47：单页渲染/保存失败不中断整批（GDI "参数无效" 多为特定页面边缘问题），跳过并继续，返回实际成功列表
+                        // V1.0.0.48：outFile 声明在 try 之外（for 内）——C# 中 catch 与 try 声明空间独立，try 内变量 catch 不可见（CS0103）
+                        // V1.0.0.49：图片文件名带文件夹全称（folder 名=baseName_JPG/PNG → 文件=baseName_JPG_p0001.jpg），4 位页码保留
+                        string outFile = Path.Combine(folder, Path.GetFileName(folder) + "_p" + (i + 1).ToString("D4") + (jpg ? ".jpg" : ".png"));
+                        try
+                        {
+                            using (Bitmap bmp = pdfRenderer.RenderPage(i, dpi))
+                            {
+                                if (jpg)
+                                {
+                                    var enc = ImageCodecInfo.GetImageEncoders().FirstOrDefault(c => c.FormatID == ImageFormat.Jpeg.Guid);
+                                    using (var ep = new EncoderParameters(1))
+                                    {
+                                        // V1.0.0.48 根因修复：质量值必须用 (long)90——(byte)/(int) 重载生成的参数类型 GDI+ JPEG 编码器不接受，Save 抛"参数无效"并留下 0 字节文件；图片水印引擎一直用 100L 故从未触发
+                                        ep.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 90L);
+                                        bmp.Save(outFile, enc, ep);
+                                    }
+                                }
+                                else
+                                {
+                                    bmp.Save(outFile, ImageFormat.Png);
+                                }
+                                outputs.Add(outFile);
+                            }
+                        }
+                        catch (Exception pageEx)
+                        {
+                            // V1.0.0.48：Save 失败可能在磁盘留下 0 字节残留文件，一并清理避免"坏图"积存
+                            try { if (outFile != null && File.Exists(outFile)) { var fi = new FileInfo(outFile); if (fi.Length == 0) File.Delete(outFile); } } catch { }
+                            try { File.AppendAllText(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "worker_diag.log"), "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] PDFToImages 第 " + (i + 1) + " 页失败：" + pageEx + Environment.NewLine); } catch { }
+                        }
+                        // V1.0.0.78：图片输出逐张进度（无论成功失败都推进——总数=PDF 页数，失败页同样计数避免停在旧值）
+                        if (imgProgress != null) { try { imgProgress(i + 1, pdfRenderer.PageCount); } catch { } }
+                    }
+                }
+                return outputs;
+            }
+            finally
+            {
                 if (!string.Equals(renderPath, pdfPath, StringComparison.OrdinalIgnoreCase))
                 {
                     PreviewPdfPreparation.TryDelete(renderPath);

@@ -46,7 +46,7 @@ namespace PDFQFZ.WebShell.Services
             try
             {
                 if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-                    return "{\"ok\":false,\"error\":\"文件不存在：" + Json(path ?? "") + "\"}";
+                    return Json(new Dictionary<string, object> { ["ok"] = false, ["error"] = "文件不存在：" + (path ?? "") });
                 var renderer = PDFQFZ.Library.PdfiumDocumentRenderer.Open(path);
                 lock (renderSync)
                 {
@@ -55,6 +55,7 @@ namespace PDFQFZ.WebShell.Services
                 }
                 // 清空上次预览缓存，避免残留图；V2.4.0.80：同步清页渲染缓存（换文档/同文档重开均失效）
                 lock (_renderPageCacheLock) { _renderPageCache.Clear(); }
+            lock (_renderGridCacheLock) { _renderGridCache.Clear(); } // V1.0.0.50：同步清网格缩略图缓存
                 try
                 {
                     if (!string.IsNullOrEmpty(_renderCacheDir) && Directory.Exists(_renderCacheDir))
@@ -129,6 +130,7 @@ namespace PDFQFZ.WebShell.Services
                 }
                 // V2.4.0.80：换调试页同步清页渲染缓存
                 lock (_renderPageCacheLock) { _renderPageCache.Clear(); }
+            lock (_renderGridCacheLock) { _renderGridCache.Clear(); } // V1.0.0.50：同步清网格缩略图缓存
                 try
                 {
                     if (!string.IsNullOrEmpty(_renderCacheDir) && Directory.Exists(_renderCacheDir))
@@ -190,6 +192,75 @@ namespace PDFQFZ.WebShell.Services
                 return "{\"ok\":false,\"error\":" + Json("渲染失败：" + ex.Message) + "}";
             }
         }
+        /// <summary>V1.0.0.50：网格视图缩略图渲染（默认 72dpi 小图，避免 grid 一次 8 张 144dpi 大图并发解码导致渲染白屏）。
+        /// 独立缓存（文档|g|页序|dpi），换文档时与页缓存一并清空；ptW/ptH 仍为页面真实 pt（px×72/dpi）。</summary>
+        public string RenderGridPage(int pageIndex, int dpi)
+        {
+            try
+            {
+                PDFQFZ.Library.IPdfDocumentRenderer r;
+                lock (renderSync) { r = _renderer; }
+                if (r == null) return "{\"ok\":false,\"error\":\"未打开PDF\"}";
+                if (dpi < 36) dpi = 72; else if (dpi > 144) dpi = 144;
+                string cacheKey = (_stampDocPath ?? "") + "|g|" + pageIndex + "|" + dpi;
+                string cachedJson;
+                lock (_renderGridCacheLock)
+                {
+                    if (_renderGridCache.TryGetValue(cacheKey, out cachedJson))
+                    {
+                        string cf = Path.Combine(_renderCacheDir, "page_grid_" + pageIndex + ".png");
+                        if (File.Exists(cf)) return cachedJson;
+                        _renderGridCache.Remove(cacheKey);
+                    }
+                }
+                using (var bmp = r.RenderPage(pageIndex, dpi))
+                {
+                    using (var ms = new MemoryStream())
+                    {
+                        bmp.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                        string name = "page_grid_" + pageIndex + ".png";
+                        string full = Path.Combine(_renderCacheDir, name);
+                        File.WriteAllBytes(full, ms.ToArray());
+                        string json = "{\"ok\":true,\"url\":" + Json(_cacheUrlPrefix + "/" + name) + ",\"w\":" + bmp.Width + ",\"h\":" + bmp.Height +
+                            ",\"ptW\":" + (bmp.Width * 72 / dpi) + ",\"ptH\":" + (bmp.Height * 72 / dpi) + "}"; // V1.0.0.50：ptW/ptH=页面真实 pt（px×72/dpi，dpi=72 时 px 即 pt）
+                        lock (_renderGridCacheLock) { _renderGridCache[cacheKey] = json; }
+                        return json;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                return "{\"ok\":false,\"error\":" + Json("渲染失败：" + ex.Message) + "}";
+            }
+        }
+        /// <summary>V1.0.0.61：网格缩略图批量渲染——一次 invoke 渲染 count 页（前端默认 32），内部复用 RenderGridPage 的缓存与渲染逻辑。
+        /// 将 WebView2 往返从每页 1 次降到每批 1 次（千页懒加载提速根因，滚动连续加载不露底）；
+        /// 返回 {"ok":true,"items":[{page,ok,url,w,h,ptW,ptH} | {page,ok:false,error}]}——单页失败不影响同批其余页，前端对失败页走单页重试。</summary>
+        public string RenderGridPageBatch(int startIndex, int count, int dpi)
+        {
+            try
+            {
+                int total = 0;
+                lock (renderSync) { if (_renderer != null) { try { total = _renderer.PageCount; } catch { total = 0; } } }
+                if (total <= 0) return "{\"ok\":false,\"error\":\"未打开PDF\"}";
+                if (dpi < 36) dpi = 72; else if (dpi > 144) dpi = 144;
+                int s = Math.Max(0, startIndex);
+                int e = Math.Min(total, s + Math.Max(1, count));
+                if (s >= e) return "{\"ok\":false,\"error\":\"页码超出范围\"}";
+                var items = new List<string>();
+                for (int i = s; i < e; i++)
+                {
+                    string one = RenderGridPage(i, dpi); // 复用单页缓存/渲染（{"ok":true,"url":..,"w":..,"h":..,"ptW":..,"ptH":..} 或 {"ok":false,"error":..}）
+                    if (one.Length >= 1 && one[0] == '{') one = one.Substring(1); // 去掉外层 {，拼入 page 字段（JSON 保持合法）
+                    items.Add("{\"page\":" + (i + 1) + "," + one);
+                }
+                return "{\"ok\":true,\"items\":[" + string.Join(",", items) + "]}";
+            }
+            catch (Exception ex)
+            {
+                return "{\"ok\":false,\"error\":" + Json("批量渲染失败：" + ex.Message) + "}";
+            }
+        }
         /// <summary>拖入的文件：base64 → 临时文件 → 打开（WebView2 拖入拿不到路径，只能读内容）。
         /// V2.4.0.15：新增 fileName 参数——按原名保存（进程隔离目录内），使输出文件命名基于原始文件名
         /// （修复拖入生成的文件名变成 pdfqfz_drop_xxx_已盖章V2 的问题）。返回 OpenPdf 同格式 JSON。</summary>
@@ -228,6 +299,7 @@ namespace PDFQFZ.WebShell.Services
             }
             // V2.4.0.80：关闭文档同步清页渲染缓存
             lock (_renderPageCacheLock) { _renderPageCache.Clear(); }
+            lock (_renderGridCacheLock) { _renderGridCache.Clear(); } // V1.0.0.50：同步清网格缩略图缓存
             return "{\"ok\":true}";
         }
         /// <summary>选择源文件夹（FolderBrowserDialog，对齐 WPF ChooseSourceDirectory）；取消返回 {"ok":false,"cancel":true}。</summary>

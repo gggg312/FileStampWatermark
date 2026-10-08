@@ -433,8 +433,9 @@ namespace PDFQFZ.WebShell.Services
                 float fs = 20; if (dic.ContainsKey("fs")) float.TryParse(dic["fs"]?.ToString(), out fs);
                 float ls = 0; if (dic.ContainsKey("letterSpacing")) float.TryParse(dic["letterSpacing"]?.ToString(), out ls);
                 string fontName = dic.ContainsKey("fontName") ? (dic["fontName"]?.ToString() ?? "微软雅黑") : "微软雅黑";
-                bool bold = dic.ContainsKey("bold") && dic["bold"]?.ToString() == "true";
-                bool italic = dic.ContainsKey("italic") && dic["italic"]?.ToString() == "true";
+                // V1.0.0.37: 布尔用类型判断（JS 反序列化后为 System.Boolean，ToString() 返回 "True"/"False" 与 "true" 永不相等——旧写法恒为 false 的死路径）
+                bool bold = dic.ContainsKey("bold") && dic["bold"] is bool && (bool)dic["bold"];
+                bool italic = dic.ContainsKey("italic") && dic["italic"] is bool && (bool)dic["italic"];
                 string result = ImageWatermarkEngine.WrapText(text, boxWpx, fs, ls, fontName, bold, italic);
                 return "{\"ok\":true,\"text\":" + Json(result) + "}";
             }

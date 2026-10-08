@@ -6,7 +6,7 @@
 
 本仓库同时推送 GitHub（gggg312/FileStampWatermark）与 Gitee（gaopeng262/file-stamp-watermark）。**线上只允许出现主程序源码与开源合规文件**，任何测试、过程、交付、备份、印章资产一律禁止入库。
 
-- **允许入库**：`WebShell/`、`WebUI/prototype/`、`PDFQFZ/`、`PDFQFZ.WPF/`（其中 `Services/` 是 WebShell 直接编译的依赖源码）、`README.md`、`LICENSE`、`LICENSES/`、`LICENSING.md`、`THIRD-PARTY-NOTICES.md`、`.gitignore`、`.gitattributes`、`封面图.png`。
+- **允许入库**：`WebShell/`、`WebUI/prototype/`、`PDFQFZ/`、`README.md`、`LICENSE`、`LICENSES/`、`LICENSING.md`、`THIRD-PARTY-NOTICES.md`、`.gitignore`、`.gitattributes`、`封面图.png`。（V1.0.0.37：弃用的 `PDFQFZ.WPF/` 项目已移入本地 `备份文件夹\PDFQFZ.WPF_弃用_1.0.0.37\`，不入库；其被 WebShell 编译的 `Services/StampEngine.cs`、`StampBatchWorker.cs`、`StampBatchRequest.cs` 已并入 `WebShell/Services/`）
 - **禁止入库**（`.gitignore` 已排除，文件保留在本地工作区，不入 git）：`交付版本/`、`备份文件夹/`、`备份/`、`E2E/`、`PDFQFZ.Tests/`、`工具脚本/`、`输出记录*.md`、`Web交付版本/`、一切 `*.exe`、一切印章/公章图片（如 `WebShell/Assets/公章.png`）、`*debug_page.pdf`、`app_icon_raw.png`、`运行组件/`。
 - **公章铁律**：软件正式版默认不携带任何印章；EXE 不内嵌公章（已移除 `EmbeddedResource` 与释放逻辑）。任何人不得重新把公章图片加入源码、资源或提交。
 

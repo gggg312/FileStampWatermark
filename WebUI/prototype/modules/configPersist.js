@@ -7,6 +7,7 @@ window.PdfqModules.configPersist = {
     applyUiConfig(cfg){
       this._shellLoading=true;
       if(cfg.outputQualityDpi!==undefined) this.dpi=String(cfg.outputQualityDpi);
+      if(cfg.outputFormat!==undefined){ this.outFormatArr=String(cfg.outputFormat||'pdf').split(',').filter(function(x){ return x==='pdf'||x==='jpg'||x==='png'; }); if(!this.outFormatArr.length){ this.outFormatArr=['pdf']; } } // V1.0.0.47：输出格式多选（逗号分隔存储）
       if(cfg.outputNameMark!==undefined) this.nameMark=cfg.outputNameMark;
       if(cfg.outputNamePos!==undefined) this.namePos=cfg.outputNamePos===1?'before':'after';
       if(cfg.outputNameSeqType!==undefined) this.seqType=['num','upper','lower'][cfg.outputNameSeqType]||'num';
@@ -72,6 +73,7 @@ window.PdfqModules.configPersist = {
       if(this._shellLoading || !window.Bridge || !window.Bridge.invoke) return;
       const cfg={
         outputQualityDpi: parseInt(this.dpi)||150,
+        outputFormat: (this.outFormatArr&&this.outFormatArr.length)?this.outFormatArr.join(','):'pdf', // V1.0.0.47：输出格式多选（逗号分隔）
         outputNameMark: this.nameMark,
         outputNamePos: this.namePos==='before'?1:0,
         outputNameSeqType: ['num','upper','lower'].indexOf(this.seqType),

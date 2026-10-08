@@ -48,20 +48,8 @@ window.PdfqModules.batchActions = {
         this._tealClicks=(this._tealClicks||0)+1;
         if(this._tealClicks>=15){ this._tealClicks=0; this.dlgCustomTitle=true; }
       }
-      // 生成前：如果有正在编辑的水印框，先从 DOM 读文字更新 b.text
-      if (this.wmEditingId) {
-          var ref = this.$refs["wmEdit-" + this.wmEditingId];
-          var el = Array.isArray(ref) ? ref[ref.length - 1] : ref;
-          if (el) {
-              var editingBox = null;
-              for (var arr of [this.wmBoxes, this.wmBoxesRight]) {
-                  var f = (arr||[]).find(function(b){return b.id===this.wmEditingId}.bind(this));
-                  if (f) { editingBox = f; break; }
-              }
-              if (editingBox) { editingBox.text = String(el.innerText).replace(/\n+$/, ""); }
-          }
-          this.wmEditingId = null;
-      }
+      // 生成前：统一 flush——取消挂起换行防抖；编辑态读 DOM/wmEditText 文字写回 b.text 并同步补测换行快照（输出与当前预览一致）V1.0.0.38
+      if (typeof this.wmFlushBeforeGenerate === 'function') { this.wmFlushBeforeGenerate(); }
       this.rangeActive=false;
       // V392：点击生成不再收起任何控件区（撤销 V2.4.0.28 旧需求）
       if(!window.Bridge){ this.opHint='浏览器预览模式：请使用壳程序（EXE）'; return; }
@@ -82,14 +70,15 @@ window.PdfqModules.batchActions = {
           self.saveDir||'', self.outputMode, parseInt(self.dpi)||150,
           self.nameMark, posMap[self.namePos]||0, seqMap[self.seqType]||0, parseInt(self.seqPad)||1,
           !!self.useTs, self.fmtToBack(self.tsFormat),
-          (self.watermarkEnabled?1:(parseInt(self.seamType)||0)), ['下','上','左','右'].indexOf(self.sealPos), parseInt(self.posVal)||50, // V392：文字水印模式骑缝章强制「不加」（与“无法盖章”互斥语义一致；纯水印不再需要印章）
+          (parseInt(self.seamType)||0), ['下','上','左','右'].indexOf(self.sealPos), parseInt(self.posVal)||50, // V1.0.0.75：骑缝章只与开关（seamType）相关——PDF 模式生成完全由开关决定，不受水印开关/水印框影响；图片模式无骑缝章概念（独立生成入口，默认不加）
           (self.segAuto?0:Math.max(1,parseInt(self.segCount)||20)), !!force, // V367：手动 0 过渡值按 1 生成；V368：文件夹不锁（可手动）
           parseInt(self.batchRange)||0, parseInt(self.batchStart)||1, parseInt(self.batchEnd)||1,
-          parseInt(self.batchX)||50, parseInt(self.batchY)||50, true, !!self.batchForce
+          parseInt(self.batchX)||50, parseInt(self.batchY)||50, true, !!self.batchForce,
+          (self.outFormatArr&&self.outFormatArr.length?self.outFormatArr.join(','):'pdf') // V1.0.0.47：输出格式多选 pdf/jpg/png（逗号分隔；后端 GenerateFiles 第 24 参，可选默认 pdf）
         ).then(function(json){
           const r=JSON.parse(json);
         // V2.4.0.70：所见即所得，取消无章确认流程（后端不再返回 needConfirm；无章直接生成无章副本）
-        if(r.ok){ self.opHint='正在生成文件，请稍候…'; }
+        if(r.ok){ self.opHint='正在生成文件，请稍候…'; self.genMerging=false; } /* V1.0.0.78：进入生成入口复位动态点点（写盘阶段由 generate-progress 文案再触发） */
         else { self.generating=false; self.opHint=r.error||'生成失败'; self.addLog(r.error||'生成失败', true); } // V2.4.0.388：生成失败原因进系统日志区（此前只显示操作提示，排查无据）
       },function(e){ self.generating=false; self.opHint='生成失败：'+e.message; });
       }); // 关闭 ReplaceAllWatermarks 的 .then

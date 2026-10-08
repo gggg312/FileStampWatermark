@@ -40,7 +40,7 @@ namespace PDFQFZ.WebShell.Services
             var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (!File.Exists(IniPath)) return result;
 
-            string[] lines = File.ReadAllLines(IniPath, Encoding.UTF8);
+            string[] lines = File.ReadAllLines(IniPath, Encoding.GetEncoding(936));
             bool inSection = false;
             string currentKey = null;
             StringBuilder currentVal = null;
@@ -98,7 +98,7 @@ namespace PDFQFZ.WebShell.Services
         private static void WriteAllSchemes(Dictionary<string, string> schemes)
         {
             // 读全部文件内容
-            string[] lines = File.Exists(IniPath) ? File.ReadAllLines(IniPath, Encoding.UTF8) : new string[0];
+            string[] lines = File.Exists(IniPath) ? File.ReadAllLines(IniPath, Encoding.GetEncoding(936)) : new string[0];
             var result = new List<string>();
             bool inSection = false;
             bool foundSection = false;
@@ -155,7 +155,7 @@ namespace PDFQFZ.WebShell.Services
                 }
             }
 
-            File.WriteAllLines(IniPath, result, Encoding.UTF8);
+            File.WriteAllLines(IniPath, result, Encoding.GetEncoding(936)); // V1.0.0.43：config.ini 由 IniFileHelper(Windows API/ANSI=GBK) 维护，此处 UTF8 读写会把全文件中文字段（印章路径/输出命名等）写乱导致印章失效
             CSharpBridge.WriteLog("[WM-SCHEMES-STORE] WriteAllSchemes count=" + schemes.Count + " names=" + string.Join(",", schemes.Keys));
         }
 

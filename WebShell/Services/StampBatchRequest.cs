@@ -15,6 +15,8 @@ namespace PDFQFZ.WPF.Services
         public int DjType { get; set; }
         /// <summary>合并模式输出 DPI（合并转图片栅格化用）。</summary>
         public int QualityDpi { get; set; }
+        /// <summary>输出格式：pdf/jpg/png（V1.0.0.46 需求3；jpg/png 时合并产物转图片并按 PDF 建同名文件夹放 p0001.* 系列）。</summary>
+        public string OutFormat { get; set; }
         public OutputNamingOptions NamingOptions { get; set; }
         public bool DirMode { get; set; }
     }

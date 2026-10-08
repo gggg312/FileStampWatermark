@@ -62,24 +62,82 @@ window.PdfqModules.sealLib = {
       return {left:left+'px',top:top+'px',width:w+'px',height:h+'px',
               transform:tf,'transform-origin':'center center'};
     },
+    /* V1.0.0.48：网格视图透出——章样式按每格真实 pt 基准计算（横竖页混排时与单页预览所见一致）。
+       与 stampStyle 同一套定位公式，仅基准由 this.pagePts/pageW/pageH 改为传入的该页 ptW/ptH。 */
+    gridStampStyle(s,dispW,ptW,ptH,tick){ /* V1.0.0.53：第5参 gridCellTick 仅作响应式依赖（resize 触发重渲染），内部不参与计算 */
+      const pts=ptW||this.pagePts||595;
+      const scale=dispW/pts;
+      const w=s.sizeMm*72/25.4*scale;
+      const h=w*(s.imgH/s.imgW);
+      const ox=s.offsetX*72/25.4*scale;
+      const oy=s.offsetY*72/25.4*scale;
+      const dispH=dispW*((ptH||this.pageH||this.pageW||1)/(ptW||this.pageW||1));
+      let cx = s.centerRatio ? (s.x*dispW) : ((dispW-w)*s.x + w/2);
+      let cy = s.centerRatio ? (s.y*dispH) : ((dispH-h)*s.y + h/2);
+      cx += ox; cy += oy;
+      const A=(s.randomRotation&&s.rotation)?s.rotation:0;
+      const rad=A*Math.PI/180, cA=Math.cos(rad), sA=Math.sin(rad);
+      const bw=w*Math.abs(cA)+h*Math.abs(sA);
+      const bh=w*Math.abs(sA)+h*Math.abs(cA);
+      if(bw<=dispW){ cx=Math.max(bw/2, Math.min(dispW-bw/2, cx)); }
+      if(bh<=dispH){ cy=Math.max(bh/2, Math.min(dispH-bh/2, cy)); }
+      const left=cx - w/2, top=cy - h/2;
+      const tf=(s.randomRotation&&s.rotation)?('rotate('+s.rotation+'deg)'):'';
+      return {left:left+'px',top:top+'px',width:w+'px',height:h+'px',
+              transform:tf,'transform-origin':'center center'};
+    },
+    /* V1.0.0.48：网格透出——骑缝章切片按每格 pt 基准（与 seamStyle 同一公式） */
+    gridSeamStyle(sl,dispW,ptW,ptH,tick){ /* V1.0.0.53：第5参 gridCellTick 仅作响应式依赖（resize 触发重渲染），内部不参与计算 */
+      if(!this.seamBase.url){ return {display:'none'}; }
+      const dispH=dispW*((ptH||842)/(ptW||595));
+      const w=sl.w*dispW, h=sl.h*dispH;
+      let left, top, width, height, transform;
+      if(sl.rotated){
+        const ww=h, hh=w;
+        left=(sl.x*dispW + w/2) - ww/2;
+        top=(sl.y*dispH + h/2) - hh/2;
+        width=ww; height=hh;
+        transform='rotate(90deg)';
+      } else {
+        left=sl.x*dispW; top=sl.y*dispH;
+        width=w; height=h;
+        transform='none';
+      }
+      const dw=width, dh=height;
+      const bsw=dw/sl.srcW, bsh=dh/sl.srcH;
+      return {
+        left:left+'px', top:top+'px', width:width+'px', height:height+'px',
+        transform:transform, transformOrigin:'center center',
+        backgroundImage:'url('+this.seamBase.url+')',
+        backgroundSize:bsw+'px '+bsh+'px',
+        backgroundPosition:(-sl.srcX*bsw)+'px '+(-sl.srcY*bsh)+'px'
+      };
+    },
+    /* V1.0.0.48：按页过滤骑缝切片（网格每格渲染用；seamSliceLeft/Right 仅服务当前页） */
+    seamByPage(p){ return (this.seamAll||[]).filter(s=>Number(s.page)===Number(p)); },
     delSeal(name){
+      const self=this;
+      ElementPlus.ElMessageBox.confirm('确定删除印章「'+name+'」吗？删除后不可恢复。','删除印章',{
+        confirmButtonText:'删除', cancelButtonText:'取消', type:'warning'
+      }).then(function(){
       if(!window.Bridge||!window.Bridge.invoke){
-        const i=this.seals.indexOf(name);
-        if(i>-1) this.seals.splice(i,1);
-        if(this.curSeal===name) this.curSeal=this.seals[0]||'';
-        this.opHint='已删除印章：'+name;
-        this.addLog('已删除印章：'+name,'ok');
+        const i=self.seals.indexOf(name);
+        if(i>-1) self.seals.splice(i,1);
+        if(self.curSeal===name) self.curSeal=self.seals[0]||'';
+        self.opHint='已删除印章：「'+name+'」'; /* V1.0.0.82：印章名非文件名，回退「」引用（V78 误包《》） */
+        self.addLog('已删除印章：「'+name+'」','ok');
         return;
       }
       window.Bridge.invoke('DeleteStamp',name).then(r=>{
         if(r==='ok'){
-          const i=this.seals.indexOf(name);
-          if(i>-1) this.seals.splice(i,1);
-          if(this.curSeal===name) this.curSeal=this.seals[0]||'';
-          this.opHint='已删除印章：'+name;
-          this.addLog('已删除印章：'+name,'ok');
-        } else { this.opHint='删除失败：'+r; this.addLog('删除失败：'+r,true); } /* V2.4.0.396：修复删除成功时仍写红色"删除失败"日志（else 只包 opHint 导致 addLog 无条件执行） */
+          const i=self.seals.indexOf(name);
+          if(i>-1) self.seals.splice(i,1);
+          if(self.curSeal===name) self.curSeal=self.seals[0]||'';
+          self.opHint='已删除印章：「'+name+'」'; /* V1.0.0.82：印章名非文件名，回退「」引用 */
+          self.addLog('已删除印章：「'+name+'」','ok');
+        } else { self.opHint='删除失败：'+r; self.addLog('删除失败：'+r,true); } /* V2.4.0.396：修复删除成功时仍写红色"删除失败"日志（else 只包 opHint 导致 addLog 无条件执行） */
       });
+      }).catch(function(){ /* 用户取消：不做任何操作 */ });
     },
     /* 从 C# 印章库加载印章列表 */
     loadStamps(){
@@ -92,7 +150,7 @@ window.PdfqModules.sealLib = {
             this.seals=list.map(x=>x.name);
             // V2.4.0.388：印章路径无效（文件缺失/config 编码损坏）时明确提示，不再静默
             const invalid=list.filter(x=>x.valid===false);
-            if(invalid.length){ const nm=invalid.map(x=>x.name).join('、'); this.opHint='印章图片不存在或配置损坏：'+nm+'，请重新导入印章'; this.addLog('印章图片不存在或配置损坏：'+nm+'，请重新导入印章', true); }
+            if(invalid.length){ const nm=invalid.map(x=>x.name).join('」、「'); this.opHint='印章图片不存在或配置损坏：「'+nm+'」，请重新导入印章'; this.addLog('印章图片不存在或配置损坏：「'+nm+'」，请重新导入印章', true); } /* V1.0.0.82：印章名非文件名，回退「」引用 */
             if(!list.some(x=>x.name===this.curSeal)) this.curSeal=list[0].name;
           } else {
             this.seals=[]; this.curSeal='';
@@ -118,8 +176,8 @@ window.PdfqModules.sealLib = {
           const i=this.seals.indexOf(name);
           if(i>-1) this.seals[i]=nn;
           if(this.curSeal===name) this.curSeal=nn;
-          this.opHint='已重命名：'+name+' → '+nn;
-          this.addLog('印章已重命名：'+name+' → '+nn,'ok');
+          this.opHint='已重命名：「'+name+'」 → 「'+nn+'」'; /* V1.0.0.82：印章名非文件名，回退「」引用 */
+          this.addLog('印章已重命名：「'+name+'」 → 「'+nn+'」','ok');
           this.dlgRename=false;
         } else { this.opHint='重命名失败：'+r; this.addLog('重命名失败：'+r,true); }
       });
@@ -184,7 +242,7 @@ window.PdfqModules.sealLib = {
           const name=f.name;
           if(!this.seals.includes(name)) this.seals.push(name);
           this.curSeal=name;
-          this.opHint='已选择印章文件：'+name+'（原型 mock）';
+          this.opHint='已选择印章文件：《'+name+'》（原型 mock）'; /* V1.0.0.78：文件名《》包裹 */
           this.addLog('已选择印章文件：'+name,'ok');
         };
         input.click();
@@ -196,7 +254,7 @@ window.PdfqModules.sealLib = {
           if(o.ok&&o.names&&o.names.length){
             for(const nm of o.names){ if(!this.seals.includes(nm)) this.seals.push(nm); }
             this.curSeal=o.names[0];
-            this.opHint='已导入印章：'+o.names.join('、')+(o.errors&&o.errors.length?('；失败：'+o.errors.join('、')):'');
+            this.opHint='已导入印章：「'+o.names.join('」、「')+'」'+(o.errors&&o.errors.length?('；失败：「'+o.errors.join('」、「')+'」'):''); /* V1.0.0.82：印章名非文件名，回退「」引用（addLog 保持无符号原样） */
             this.addLog('已导入印章：'+o.names.join('、')+(o.errors&&o.errors.length?('；失败：'+o.errors.join('、')):''),'ok');
           } else if(!o.cancel){
             this.opHint='导入失败：'+(o.error||'未导入任何印章');

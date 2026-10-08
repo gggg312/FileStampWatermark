@@ -26,6 +26,8 @@ namespace PDFQFZ.WebShell
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            // V1.0.0.37：INI 日志委托注入（Library 不再编译期引用 WebShell，此处桥接）
+            PDFQFZ.Library.IniFileHelper.LogAction = PDFQFZ.WebShell.Services.CSharpBridge.WriteLog;
             // V2.4.0.5：旧布局迁移（V2.4.0.4 及更早 config.ini/印章库在 EXE 根目录 → 运行组件\），须先于一切配置读取
             PDFQFZ.WPF.Services.AppConfig.MigrateLegacyLayout();
             // V1.0.0.14：统一运行日志 app_log.log——启动轮转（保留上次+本次两段），须在崩溃处理器注册前初始化

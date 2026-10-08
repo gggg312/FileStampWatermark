@@ -30,11 +30,11 @@ namespace PDFQFZ.WebShell.Services
                     Page = page,  // 0=所有页，>=1=指定页
                     X = Clamp01((float)x), Y = Clamp01((float)y),
                     W = Clamp01((float)w), H = Clamp01((float)h),
-                    Rotation = ClampRot((float)(JsonDouble(jsonParams, "rotation") ?? 0)),
+                    Rotation = ClampRot((float)(JsonDouble(jsonParams, "rotation") ?? 35)),  // V1.0.0.46：新建框默认 35°
                     Text = JsonStr(jsonParams, "text") ?? "",
                     FontName = JsonStr(jsonParams, "fontName") ?? "微软雅黑",
                     ColorArgb = JsonInt(jsonParams, "colorArgb") ?? unchecked((int)0xFF1F2329),
-                    Opacity = ClampInt(JsonInt(jsonParams, "opacity") ?? 100, 0, 100),
+                    Opacity = ClampInt(JsonInt(jsonParams, "opacity") ?? 40, 0, 100),  // V1.0.0.46：新建框默认不透明度 40
                     Bold = JsonBool(jsonParams, "bold"), Italic = JsonBool(jsonParams, "italic"),
                     Underline = JsonBool(jsonParams, "underline"), Strike = JsonBool(jsonParams, "strike"),
                     LetterSpacing = ClampInt(JsonInt(jsonParams, "letterSpacing") ?? 0, -150, 300),

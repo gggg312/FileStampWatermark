@@ -39,6 +39,8 @@ namespace PDFQFZ.WPF.Services
         // 字数限制：建议 ≤50 字；超出可能被系统标题栏截断显示不全。
         // 默认"（GG 优化版）"（恢复 WPF 旧版样式）；标准版不想显示可改为空字符串 ""
         public static string TitleSuffix = ""; // V2.4.0.410：免费版窗口标题无后缀（原"（GG 优化版）"）
+        // V1.0.0.38：水印逐行诊断日志开关（config.ini diagWatermark=1 时开启，默认关；壳层启动时注入 ImageWatermarkEngine/StampEngine）
+        public static bool DiagWatermark = false;
         // V2.4.0.407：档位内嵌（编译常量 #if VIP_PAID，运行时不生成不读取 vip.ini）。0=免费版 / 3=收费版（9.9 档全功能：主题色+徽章+自定义标题）
 #if VIP_PAID
         public static int VipTier = 3;
@@ -59,6 +61,7 @@ namespace PDFQFZ.WPF.Services
         public static int TexPreset4Brightness = 0, TexPreset4Blob = 0, TexPreset4Gradient = 0, TexPreset4White = 0,
             TexPreset4Spot = 0, TexPreset4Radial = 0, TexPreset4Cast = 0;
         public static int OutputQualityDpi = 150; // 合并模式输出清晰度（300/200/150/96/72，默认标准150）
+        public static string OutputFormat = "pdf"; // V1.0.0.46：输出格式 pdf/jpg/png
         public static int YzIndex = -1;       // 印章索引（历史兼容，WPF 以路径为准）
 
         // ---------- 自定义输出文件名后缀（V132 新增；旧 fixStr/fixType 键在 LoadFromIni 一次性迁移） ----------
@@ -225,6 +228,7 @@ namespace PDFQFZ.WPF.Services
                 TexPreset4Radial = ini.GetIniInt(Section, "texPreset4Radial", 0);
                 TexPreset4Cast = ini.GetIniInt(Section, "texPreset4Cast", 0);
                 OutputQualityDpi = ini.GetIniInt(Section, "outputQualityDpi", OutputQualityDpi);
+                OutputFormat = Content(ini, "outputFormat", OutputFormat); // V1.0.0.46
                 YzIndex = ini.GetIniInt(Section, "yzIndex", YzIndex);
                 // 输出文件名后缀（V2.3.2.14：不再迁移 V132 旧规则 fixType/fixStr，新版本不迁移旧配置；
                 // 键不存在时用默认"已处理V"，用户保存过（含清空）按保存值）
@@ -278,6 +282,8 @@ namespace PDFQFZ.WPF.Services
                 FoldMode = ini.GetIniInt(Section, "foldMode", FoldMode);
                 FoldDpi = ini.GetIniInt(Section, "foldDpi", FoldDpi);
                 FoldName = ini.GetIniInt(Section, "foldName", FoldName);
+                // V1.0.0.38：水印逐行诊断日志开关（默认关；用户手改 config.ini 置 1 开启，供排查输出水印换行/位置问题）
+                DiagWatermark = ini.GetIniInt(Section, "diagWatermark", 0) == 1;
             }
             catch
             {
@@ -475,6 +481,7 @@ namespace PDFQFZ.WPF.Services
                 ini.WriteIniInt(Section, "wz", WzPercent);
                 ini.WriteIniInt(Section, "maxfgs", MaxFgs);
                 ini.WriteIniInt(Section, "outputQualityDpi", OutputQualityDpi);
+                ini.WriteIniString(Section, "outputFormat", OutputFormat ?? "pdf"); // V1.0.0.46
                 ini.WriteIniInt(Section, "yzIndex", YzIndex);
                 // 输出文件名后缀
                 ini.WriteIniString(Section, "outputNameMark", OutputNameMark ?? "");
@@ -834,7 +841,8 @@ namespace PDFQFZ.WPF.Services
             get { return Path.Combine(RuntimeDir, "印章库"); }
         }
 
-        /// <summary>判断路径是否位于印章库内（库内文件删除时不再询问外部文件）。</summary>
+        /// <summary>判断路径是否位于印章库内（库内文件删除时不再询问外部文件）。V1.0.0.37：规范化后按分隔符判断，
+        /// 避免 "印章库2" 等同级前缀目录被误判为库内。</summary>
         public static bool IsInLibrary(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
@@ -842,7 +850,8 @@ namespace PDFQFZ.WPF.Services
             {
                 string lib = Path.GetFullPath(StampLibraryDir);
                 string full = Path.GetFullPath(path);
-                return full.StartsWith(lib, StringComparison.OrdinalIgnoreCase);
+                if (string.Equals(full, lib, StringComparison.OrdinalIgnoreCase)) return true; // 目录本身视为库内
+                return full.StartsWith(lib + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
             }
             catch
             {
@@ -1103,20 +1112,20 @@ namespace PDFQFZ.WPF.Services
             public int RotationHandle = 0;   // 旋转处理 0=旋转切边 1=不切边
             public int Opacity = 60;         // 不透明度 %
             public bool RandomParams = false;// 盖章随机旋转
-            public int RandomRange = 0;       // 盖章随机旋转角度范围（0~360°，0=不随机旋转）
-            public int RandomOffsetXMm = 0;   // 盖章随机横向位移范围（0~200 mm，0=横向不随机；横向 -X~+X 随机）
-            public int RandomOffsetYMm = 0;   // 盖章随机纵向位移范围（0~200 mm，0=纵向不随机；纵向 -Y~+Y 随机）
+            public int RandomRange = 30;       // 盖章随机旋转角度范围（0~360°，0=不随机旋转）V1.0.0.83：默认 30（用户确认智能体/UI 统一默认值）
+            public int RandomOffsetXMm = 10;   // 盖章随机横向位移范围（0~200 mm，0=横向不随机；横向 -X~+X 随机）V1.0.0.83：默认 10
+            public int RandomOffsetYMm = 10;   // 盖章随机纵向位移范围（0~200 mm，0=纵向不随机；纵向 -Y~+Y 随机）V1.0.0.83：默认 10
             public bool RemoveWhite = false; // 去除白色背景
             public int Tolerance = 20;       // 容差
             public int MaxSplit = 500;       // 骑缝章最大分割数（随印章记忆，默认500）
             public bool TextureQuality = false; // 盖章渲染（勾选后按四维上限随机生成印泥质感）
-            public int TextureBrightness = 0;  // 明暗强度上限 0-100
-            public int TextureBlob = 0;        // 斑块大小上限 0-100
-            public int TextureGradient = 0;    // 渐变上限 0-100
-            public int TextureWhite = 0;       // 局部露白上限 0-100
-            public int TextureSpot = 0;        // 内部斑点上限 0-100
-            public int TextureRadial = 0;       // 径向压印上限 0-100（中心深边缘浅）
-            public int TextureCast = 0;         // 整体色偏上限 0-100（印泥批次色差）
+            public int TextureBrightness = 20;  // 明暗强度上限 0-100  V1.0.0.83：默认 20（用户确认值）
+            public int TextureBlob = 10;        // 斑块大小上限 0-100  V1.0.0.83：默认 10
+            public int TextureGradient = 10;    // 渐变上限 0-100  V1.0.0.83：默认 10
+            public int TextureWhite = 20;       // 局部露白上限 0-100  V1.0.0.83：默认 20
+            public int TextureSpot = 20;        // 内部斑点上限 0-100  V1.0.0.83：默认 20
+            public int TextureRadial = 20;       // 径向压印上限 0-100（中心深边缘浅）V1.0.0.83：默认 20
+            public int TextureCast = 0;         // 整体色偏上限 0-100（印泥批次色差）V1.0.0.83：默认 0（不变）
             public int TexturePresetIndex = 0;  // 当前渲染方案（0=自定义，1-4=方案N，随章记忆，见规范 §7.3）
         }
 

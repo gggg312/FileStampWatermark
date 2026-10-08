@@ -56,6 +56,7 @@ namespace PDFQFZ.WebShell.Services
                 ["wz"] = AppConfig.WzPercent,
                 ["maxfgs"] = AppConfig.MaxFgs,
                 ["outputQualityDpi"] = AppConfig.OutputQualityDpi,
+                ["outputFormat"] = AppConfig.OutputFormat ?? "pdf", // V1.0.0.46：输出格式 pdf/jpg/png
                 ["outputNameMark"] = AppConfig.OutputNameMark ?? "",
                 ["outputNamePos"] = AppConfig.OutputNamePos,
                 ["outputNameSeqType"] = AppConfig.OutputNameSeqType,
@@ -113,6 +114,7 @@ namespace PDFQFZ.WebShell.Services
                 AppConfig.WzPercent = GetInt(d, "wz", AppConfig.WzPercent);
                 AppConfig.MaxFgs = GetInt(d, "maxfgs", AppConfig.MaxFgs);
                 AppConfig.OutputQualityDpi = GetInt(d, "outputQualityDpi", AppConfig.OutputQualityDpi);
+                AppConfig.OutputFormat = GetStr(d, "outputFormat", AppConfig.OutputFormat); // V1.0.0.46
                 AppConfig.OutputNameMark = GetStr(d, "outputNameMark", AppConfig.OutputNameMark);
                 AppConfig.OutputNamePos = GetInt(d, "outputNamePos", AppConfig.OutputNamePos);
                 AppConfig.OutputNameSeqType = GetInt(d, "outputNameSeqType", AppConfig.OutputNameSeqType);

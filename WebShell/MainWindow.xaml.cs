@@ -36,6 +36,9 @@ namespace PDFQFZ.WebShell
             // V2.4.0.39：窗口显示前预加载配置并按保存尺寸定位——消除启动"先大后小"跳变
             // （XAML 初始尺寸已与 config 默认一致 1280×950；FitWindowToScreen 需窗口加载后的 DPI/屏幕修正，仍在 Loaded 执行）
             try { PDFQFZ.WPF.Services.AppConfig.LoadFromIni(); } catch { }
+            // V1.0.0.38：水印逐行诊断日志开关注入两引擎（config.ini diagWatermark=1 时开启，默认关零 I/O）
+            try { PDFQFZ.Library.ImageWatermarkEngine.DiagEnabled = PDFQFZ.WPF.Services.AppConfig.DiagWatermark; } catch { }
+            try { PDFQFZ.WPF.Services.StampEngine.DiagEnabled = PDFQFZ.WPF.Services.AppConfig.DiagWatermark; } catch { }
             // V2.4.0.402：vip.ini（收费版）可携带 titleSuffix，加载后刷新窗口标题（默认（GG 优化版）不受影响）
             try { RefreshTitle(); } catch { }
             try
@@ -433,13 +436,8 @@ namespace PDFQFZ.WebShell
                                 try
                                 {
                                     string libDir = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "印章库");
-                                    string srcStamp = @"D:\gg笔记本\CODEX项目汇总\tasks\GitHub项目\PDFQFZ\交付版本\印章库\公章.png";
-                                    string dstStamp = System.IO.Path.Combine(libDir, "公章.png");
-                                    if (System.IO.File.Exists(srcStamp) && !System.IO.File.Exists(dstStamp))
-                                    {
-                                        System.IO.Directory.CreateDirectory(libDir);
-                                        System.IO.File.Copy(srcStamp, dstStamp);
-                                    }
+                                    // V1.0.0.37：删除失效的开发机绝对路径复制逻辑（E2E run_e2e.ps1 已自包含准备印章库\公章.png 并修复 config.ini）
+string dstStamp = System.IO.Path.Combine(libDir, "公章.png");
                                     var entries = AppConfig.LoadStampEntries();
                                     bool hasGongzhang = entries.Any(en => string.Equals(en.DisplayName, "公章", StringComparison.OrdinalIgnoreCase));
                                     if (!hasGongzhang && System.IO.File.Exists(dstStamp))
@@ -723,9 +721,12 @@ namespace PDFQFZ.WebShell
                                     string dir8 = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "s8_dir");
                                     if (System.IO.Directory.Exists(dir8)) System.IO.Directory.Delete(dir8, true);
                                     System.IO.Directory.CreateDirectory(dir8);
+                                    string edgeExe = FindEdgeExe(); // V1.0.0.37：动态查找 Edge（不再硬编码 (x86) 路径，避免跨机前置 PDF 生成失败）
+                                    System.IO.File.AppendAllText(dumpPath, string.IsNullOrEmpty(edgeExe) ? "\ns8kNoEdge:1" : "\ns8kNoEdge:0");
                                     for (int di = 1; di <= 3; di++)
                                     {
                                         string name = di == 1 ? "s8_a" : (di == 2 ? "s8_b" : "s8_c");
+                                        if (string.IsNullOrEmpty(edgeExe)) continue; // V1.0.0.37：Edge 不可用时跳过生成（E2E 按 s8kNoEdge 判定 SKIP）
                                         int pages = di == 1 ? 6 : (di == 2 ? 3 : 2);
                                         var html = new System.Text.StringBuilder();
                                         html.Append("<!DOCTYPE html><html><head><meta charset='utf-8'><style>@page{size:A4;margin:0}body{margin:0;font-family:'Microsoft YaHei'}div{page-break-after:always;height:297mm;padding:20mm;box-sizing:border-box}span{position:absolute;left:130mm;top:100mm;font-size:14pt}</style></head><body>");
@@ -735,7 +736,7 @@ namespace PDFQFZ.WebShell
                                         string hf = System.IO.Path.Combine(dir8, name + ".html");
                                         System.IO.File.WriteAllText(hf, html.ToString(), new System.Text.UTF8Encoding(true));
                                         string pf = System.IO.Path.Combine(dir8, name + ".pdf");
-                                        var psi = new System.Diagnostics.ProcessStartInfo(@"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe")
+                                        var psi = new System.Diagnostics.ProcessStartInfo(edgeExe)
                                         {
                                             UseShellExecute = false,
                                             RedirectStandardOutput = true,
@@ -1089,7 +1090,7 @@ namespace PDFQFZ.WebShell
                                     // s28（V2.4.0.99）：图片批量水印——加载测试图片→加水印框→批量输出→校验输出文件与命名
                                     try
                                     {
-                                        string s28dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PDFQFZ_E2E_97_" + System.Guid.NewGuid().ToString("N").Substring(0, 6));
+                                        string s28dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "PDFQFZ_E2E_97_acd459"); // V1.0.0.42：固定目录，与 s30/s31/s33 读取路径一致（原随机目录导致 s31b/s33 图片缺失）
                                         System.IO.Directory.CreateDirectory(s28dir);
                                         string s28src = System.IO.Path.Combine(s28dir, "风景照片.jpg");
                                         using (var bmp = new System.Drawing.Bitmap(800, 500))
@@ -1516,6 +1517,75 @@ namespace PDFQFZ.WebShell
                                     }
                                     System.IO.File.AppendAllText(dumpPath, "\ns13c3:" + s13c3V);
                                     System.Windows.Application.Current.MainWindow.Width = _w1; System.Windows.Application.Current.MainWindow.Height = _h1;
+
+                                    // s-bm（V1.0.0.62）：模式提示条拖动验证——启用水印渲染 banner，模拟移动按钮 mousedown→mousemove(+120,+80)→mouseup，断言 bannerPos 更新且 banner 实际位移（用户 3 次反馈"提示条无法移动"）
+                                    string sbm0 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.watermarkEnabled=true;vm.wmEditMode=true;vm.wmSect.main=true;return 'ok';})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsbm0:" + sbm0);
+                                    await System.Threading.Tasks.Task.Delay(1200);
+                                    // sbm1：同步拖动（banner 本体左侧文本区 mousedown→mousemove(+120,+80)→mouseup），立即读 bp1/r0（V1.0.0.63：拖动按钮已删，本体可拖）
+                                    string sbm1 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var banner=document.querySelector('.wm-mode-banner');if(!banner){return JSON.stringify({ok:false,err:'no-banner',banner:!!banner});}var r0=banner.getBoundingClientRect();var bp0=vm.bannerPos;var b=banner.getBoundingClientRect();var cx=b.left+40,cy=b.top+b.height/2;banner.dispatchEvent(new MouseEvent('mousedown',{clientX:cx,clientY:cy,bubbles:true,cancelable:true,button:0}));window.dispatchEvent(new MouseEvent('mousemove',{clientX:cx+120,clientY:cy+80,bubbles:true,cancelable:true}));window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true}));var bp1=vm.bannerPos;return JSON.stringify({ok:true,fn:typeof vm.wmBannerStyle+','+typeof vm.wmBannerDown+','+(window.PdfqModules?(typeof window.PdfqModules.watermarkActions.wmBannerStyle):'no-mod'),bp0:bp0?JSON.stringify(bp0):null,bp1:bp1?JSON.stringify(bp1):null,r0:{l:Math.round(r0.left),t:Math.round(r0.top),w:Math.round(r0.width),h:Math.round(r0.height)}});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsbm1:" + sbm1);
+                                    await System.Threading.Tasks.Task.Delay(700);
+                                    // sbm2：Vue flush 后读 r1+st1+anchor（视觉层验证），再直接设 bannerPos 验证 :style 绑定
+                                    string sbm2 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var banner=document.querySelector('.wm-mode-banner');if(!banner){return JSON.stringify({ok:false,err:'no-banner2'});}var r1=banner.getBoundingClientRect();var st1=banner.getAttribute('style')||'';var anc=banner.offsetParent?((banner.offsetParent.className||banner.offsetParent.tagName)+'|'+Math.round(banner.offsetParent.getBoundingClientRect().left)+','+Math.round(banner.offsetParent.getBoundingClientRect().top)):'null';vm.bannerPos={x:300,y:150};return JSON.stringify({ok:true,r1:{l:Math.round(r1.left),t:Math.round(r1.top),w:Math.round(r1.width),h:Math.round(r1.height)},st1:st1,cls:banner.className,anchor:anc,bpNow:vm.bannerPos?JSON.stringify(vm.bannerPos):null});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsbm2:" + sbm2);
+                                    await System.Threading.Tasks.Task.Delay(700);
+                                    // sbm3：直接设置后读 r2+st2（验证 :style 是否生效）
+                                    string sbm3 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var banner=document.querySelector('.wm-mode-banner');if(!banner){return JSON.stringify({ok:false,err:'no-banner3'});}var r2=banner.getBoundingClientRect();var st2=banner.getAttribute('style')||'';return JSON.stringify({ok:true,r2:{l:Math.round(r2.left),t:Math.round(r2.top),w:Math.round(r2.width),h:Math.round(r2.height)},st2:st2,bp:vm.bannerPos?JSON.stringify(vm.bannerPos):null});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsbm3:" + sbm3);
+                                    string sbm4 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.watermarkEnabled=false;vm.wmEditMode=false;vm.wmSect.main=false;return 'ok';})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsbm4:" + sbm4);
+                                    // s-gr（V1.0.0.62）：网格视图窗口 resize 与全屏验证——切 grid4 后：①窗口+200，gridCellTick 递增、格子变宽、grid 内容保留；②预览区全屏后 grid 内容仍显示（用户实测"多页视图 resize 不生效/全屏后不显示"）
+                                    string sgr0 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.setView('grid4');return JSON.stringify({view:vm.viewMode});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr0:" + sgr0);
+                                    await System.Threading.Tasks.Task.Delay(2500);
+                                    string sgr1 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var cell=document.querySelector('.grid-cell');window.__sgr1={tick:vm.gridCellTick||0,w:cell?cell.clientWidth:0,cells:document.querySelectorAll('.grid-cell').length,gridPages:vm.gridPages.length,stageW:vm.$refs.stage?vm.$refs.stage.clientWidth:0,view:vm.viewMode};return 'ok';})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr1Ret:" + sgr1);
+                                    string sgr1V = "";
+                                    for (int gi = 0; gi < 8; gi++)
+                                    {
+                                        await System.Threading.Tasks.Task.Delay(400);
+                                        string rr = await webView.CoreWebView2.ExecuteScriptAsync("(function(){return window.__sgr1?JSON.stringify(window.__sgr1):''})()");
+                                        if (!string.IsNullOrEmpty(rr)) { sgr1V = rr; break; }
+                                    }
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr1:" + sgr1V);
+                                    double _wgr = System.Windows.Application.Current.MainWindow.Width;
+                                    System.Windows.Application.Current.MainWindow.Width = _wgr + 200;
+                                    await System.Threading.Tasks.Task.Delay(1500);
+                                    string sgr2 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var cell=document.querySelector('.grid-cell');return JSON.stringify({tick:vm.gridCellTick||0,w:cell?cell.clientWidth:0,cells:document.querySelectorAll('.grid-cell').length,gridPages:vm.gridPages.length,stageW:vm.$refs.stage?vm.$refs.stage.clientWidth:0,view:vm.viewMode});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr2:" + sgr2);
+                                    string sgr3 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.toggleFullscreen();return JSON.stringify({fs:vm.isFullscreen});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr3:" + sgr3);
+                                    await System.Threading.Tasks.Task.Delay(1500);
+                                    string sgr4 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var cells=document.querySelectorAll('.grid-cell').length;var cell=document.querySelector('.grid-cell');var l=document.querySelector('.left');return JSON.stringify({fs:vm.isFullscreen,cells:cells,gridPages:vm.gridPages.length,w:cell?cell.clientWidth:0,leftDisplay:l?getComputedStyle(l).display:'na',view:vm.viewMode});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr4:" + sgr4);
+                                    System.Windows.Application.Current.MainWindow.Width = _wgr;
+                                    string sgr5 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;if(vm.isFullscreen){vm.toggleFullscreen();}vm.setView('single');return 'ok';})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgr5:" + sgr5);
+                                    await System.Threading.Tasks.Task.Delay(1500);
+                                    // s-grp（V1.0.0.66）：切视图向前补载前段页——curPage=9 切 grid4，验证 gridLoadPrev(fromPage=9) 补载 1..8（回归"P is not defined"致前 8 页不显示/loadingPrev 恒 true）
+                                    string sgrp0 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.curPage=9;vm.curPageInput='9';vm.setView('grid4');return JSON.stringify({cur:vm.curPage,view:vm.viewMode});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgrp0:" + sgrp0);
+                                    await System.Threading.Tasks.Task.Delay(3000);
+                                    string sgrp1 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;var pages=vm.gridPages.map(function(g){return g.page;});var has1=pages.indexOf(1)>=0;var has8=pages.indexOf(8)>=0;var first=pages.slice(0,3).join(',');return JSON.stringify({cnt:pages.length,first:first,has1:has1,has8:has8,loadingPrev:vm.gridLoadingPrev||false,view:vm.viewMode});})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgrp1:" + sgrp1);
+                                    string sgrp2 = await webView.CoreWebView2.ExecuteScriptAsync(
+                                        "(function(){var vm=window.__vm;vm.setView('single');return 'ok';})()");
+                                    System.IO.File.AppendAllText(dumpPath, "\nsgrp2:" + sgrp2);
+                                    await System.Threading.Tasks.Task.Delay(1200);
 
                                     // s13d/s13e/s13f/s13g V2.4.0.7：放大滚轮连续阅读 / 双页垂直居中 / 双页残留125%不拖 / 打开文件不被调试页覆盖
                                     // 全部用"同步执行 + C# Delay + 独立读值"模式（setTimeout 回调异常会逃逸空结果，s11b 踩坑）
@@ -2132,6 +2202,34 @@ namespace PDFQFZ.WebShell
             catch { }
         }
 
+        /// <summary>V1.0.0.37：E2E s8k 前置 PDF 生成用的 Edge headless 可执行文件——动态查找（不再硬编码 (x86) 路径），找不到返回空串。</summary>
+        private static string FindEdgeExe()
+        {
+            string[] candidates =
+            {
+                @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
+                @"C:\Program Files\Microsoft\Edge\Application\msedge.exe",
+                System.IO.Path.Combine(System.Environment.GetFolderPath(System.Environment.SpecialFolder.LocalApplicationData), @"Microsoft\Edge\Application\msedge.exe")
+            };
+            foreach (string c in candidates)
+            {
+                try { if (System.IO.File.Exists(c)) return c; } catch { }
+            }
+            try
+            {
+                using (var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\msedge.exe"))
+                {
+                    if (key != null)
+                    {
+                        string v = key.GetValue(null) as string;
+                        if (!string.IsNullOrWhiteSpace(v) && System.IO.File.Exists(v)) return v;
+                    }
+                }
+            }
+            catch { }
+            return "";
+        }
+
         private static string LocateWebRoot()
         {
             string exeDir = AppDomain.CurrentDomain.BaseDirectory;
@@ -2144,13 +2242,7 @@ namespace PDFQFZ.WebShell
             string p1 = Path.Combine(rt, "WebUI", "prototype");
             string curVer = Assembly.GetExecutingAssembly().GetName().Version.ToString();
             string verFile = Path.Combine(rt, "WebUI", "webui.version.txt");
-            bool fresh = false;
-            try
-            {
-                fresh = File.Exists(Path.Combine(p1, "index.html")) && Directory.Exists(Path.Combine(p1, "lib"))
-                    && File.Exists(verFile) && File.ReadAllText(verFile).Trim() == curVer;
-            }
-            catch { fresh = false; }
+            // V1.0.0.37：删除未使用的 fresh 计算（出厂覆盖策略由 ExtractEmbeddedWebRoot 的 needRefresh 常量控制，版本标记仍写入供外部核对）
             try
             {
                 if (PDFQFZ.WPF.Services.AppConfig.LoadStampEntries().Count == 0)
@@ -2186,7 +2278,6 @@ namespace PDFQFZ.WebShell
         {
             try
             {
-                bool needRefresh = true; // V2.4.0.163：调试版本总是覆盖 WebUI，不用手动删运行组件
                 var map = new Dictionary<string, string>
                 {
                     { "PDFQFZ.WebShell.webui.index.html", "index.html" },
