@@ -1,0 +1,287 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="15.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+  <PropertyGroup>
+    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
+    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
+    <ProjectGuid>{A8F2C4B1-5E22-4F9A-8B7D-2E7D3C9F5A6B}</ProjectGuid>
+    <OutputType>WinExe</OutputType>
+    <RootNamespace>PDFQFZ.WebShell</RootNamespace>
+    <AssemblyName>PDFQFZ.WebShell</AssemblyName>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
+    <FileAlignment>512</FileAlignment>
+    <TargetFrameworkProfile />
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin\Debug\</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
+    <PlatformTarget>AnyCPU</PlatformTarget>
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin\Release\</OutputPath>
+    <DefineConstants>TRACE</DefineConstants>
+    <ErrorReport>prompt</ErrorReport>
+    <WarningLevel>4</WarningLevel>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="PresentationCore" />
+    <Reference Include="PresentationFramework" />
+    <Reference Include="WindowsBase" />
+    <Reference Include="System.Xaml" />
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
+    <Reference Include="System.Web.Extensions" />
+    <Reference Include="System.Management" />
+  </ItemGroup>
+  <ItemGroup>
+    <ApplicationDefinition Include="App.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </ApplicationDefinition>
+    <Page Include="MainWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="App.xaml.cs">
+      <DependentUpon>App.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="MainWindow.xaml.cs">
+      <DependentUpon>MainWindow.xaml</DependentUpon>
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="Services\CSharpBridge.cs" />
+    <Compile Include="Services\CSharpBridge.Config.cs" />
+    <Compile Include="Services\CSharpBridge.Documents.cs" />
+    <Compile Include="Services\CSharpBridge.Stamping.cs" />
+    <Compile Include="Services\CSharpBridge.Batch.cs" />
+    <Compile Include="Services\CSharpBridge.SealLib.cs" />
+    <Compile Include="Services\CSharpBridge.Watermark.cs" />
+    <Compile Include="Services\CSharpBridge.Image.cs" /> <!-- V2.4.0.97：图片批量水印桥 -->
+    <Compile Include="Services\BatchCli.cs" /> <!-- V2.4.0.373：命令行批处理模式（智能体调用） -->
+    <Compile Include="Services\DocsBootstrap.cs" /> <!-- V2.4.0.374：出厂说明文档嵌入 EXE 资源，启动时覆盖写出 -->
+    <Compile Include="Services\WatermarkSchemeStore.cs" />
+    <Compile Include="Services\AppLog.cs" /> <!-- V1.0.0.14：统一运行日志 app_log.log -->
+    <Compile Include="Services\OleDropTarget.cs" />
+    <Compile Include="Services\AppConfig.cs" />
+    <Compile Include="Services\PdfiumBootstrap.cs" />
+    <Compile Include="Services\WebView2LoaderBootstrap.cs" />
+    <Compile Include="Library\IniFileHelper.cs" />
+    <Compile Include="..\PDFQFZ\Library\PdfiumDocumentRenderer.cs">
+      <Link>Library\PdfiumDocumentRenderer.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\IPdfDocumentRenderer.cs">
+      <Link>Library\IPdfDocumentRenderer.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\PdfRenderSizeCalculator.cs">
+      <Link>Library\PdfRenderSizeCalculator.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\StampAnchorClamp.cs" />
+    <Compile Include="..\PDFQFZ\Library\StampPlacement.cs">
+      <Link>Library\StampPlacement.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\WatermarkBox.cs">
+      <Link>Library\WatermarkBox.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\ImageWatermarkEngine.cs">
+      <Link>Library\ImageWatermarkEngine.cs</Link>
+    </Compile> <!-- V2.4.0.97：图片水印引擎 -->
+    <Compile Include="..\PDFQFZ\Library\PreviewStampLayout.cs">
+      <Link>Library\PreviewStampLayout.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\WhiteTransparencyHelper.cs">
+      <Link>Library\WhiteTransparencyHelper.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\SeamLayoutCalculator.cs">
+      <Link>Library\SeamLayoutCalculator.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\BatchRangeCalculator.cs">
+      <Link>Library\BatchRangeCalculator.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\SeamStampPolicy.cs">
+      <Link>Library\SeamStampPolicy.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\PreviewPdfPreparation.cs">
+      <Link>Library\PreviewPdfPreparation.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\PdfTextSearcher.cs">
+      <Link>Library\PdfTextSearcher.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\AutoStampPositionCalculator.cs">
+      <Link>Library\AutoStampPositionCalculator.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ.WPF\Services\StampEngine.cs">
+      <Link>Services\StampEngine.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ.WPF\Services\StampBatchWorker.cs">
+      <Link>Services\StampBatchWorker.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ.WPF\Services\StampBatchRequest.cs">
+      <Link>Services\StampBatchRequest.cs</Link>
+    </Compile>
+    <Compile Include="..\PDFQFZ\Library\OutputFileNamingPolicy.cs">
+      <Link>Library\OutputFileNamingPolicy.cs</Link>
+    </Compile>
+    <Compile Include="Properties\AssemblyInfo.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" GeneratePathProperty="true">
+      <Version>1.0.2903.40</Version>
+    </PackageReference>
+    <PackageReference Include="Costura.Fody">
+      <Version>6.2.0</Version>
+    </PackageReference>
+    <PackageReference Include="PdfiumViewer.Updated">
+      <Version>2.14.5</Version>
+    </PackageReference>
+    <PackageReference Include="bblanchon.PDFium.Win32" GeneratePathProperty="true">
+      <Version>153.0.8009</Version>
+    </PackageReference>
+    <PackageReference Include="iTextSharp">
+      <Version>5.5.13.6</Version>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <!-- v2.4.0.40：窗口标题栏图标（内嵌 WPF 资源，单 EXE 自包含，供 pack URI 引用） -->
+    <Resource Include="Assets\app.ico" />
+    <!-- pdfium.dll 作为普通嵌入资源（不交给 Costura），启动时由 PdfiumBootstrap 提取到 EXE 同目录，
+         与 WPF 版行为完全一致（不依赖 %TEMP%，避免杀软/权限导致加载失败）。 -->
+    <EmbeddedResource Include="$(Pkgbblanchon_PDFium_Win32)\runtimes\win-x86\native\pdfium.dll">
+      <Link>assets\pdfium-x86.dll</Link>
+      <LogicalName>PDFQFZ.WebShell.assets.pdfium-x86.dll</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="$(Pkgbblanchon_PDFium_Win32)\runtimes\win-x64\native\pdfium.dll">
+      <Link>assets\pdfium-x64.dll</Link>
+      <LogicalName>PDFQFZ.WebShell.assets.pdfium-x64.dll</LogicalName>
+    </EmbeddedResource>
+    <!-- WebView2Loader.dll（原生，单 EXE 打包：启动时提取到 EXE 同目录，须先于 EnsureCoreWebView2Async） -->
+    <EmbeddedResource Include="$(PkgMicrosoft_Web_WebView2)\build\native\x64\WebView2Loader.dll">
+      <Link>assets\WebView2Loader-x64.dll</Link>
+      <LogicalName>PDFQFZ.WebShell.assets.WebView2Loader-x64.dll</LogicalName>
+    </EmbeddedResource>
+    <!-- 单 EXE：WebUI\prototype 六件套嵌入资源（启动时若 EXE 同目录无 WebUI 则提取；已存在不覆盖） -->
+    <!-- V1.0.0.34：移除内置调试 PDF 资源（调试页功能已停用） -->
+    <!-- V374：出厂说明文档（智能体调用手册/用户使用说明）嵌入 EXE，启动时覆盖写出到软件目录 -->
+    <EmbeddedResource Include="Docs\agent_handbook.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.agent_handbook.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\user_guide.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.user_guide.md</LogicalName>
+    </EmbeddedResource>
+    <!-- V375：任务 JSON 模板（4 类任务），启动时生成到 任务模板\，智能体直接读模板改路径，不重写 -->
+    <EmbeddedResource Include="Docs\Templates\pdf-stamp.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.Templates.pdf-stamp.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\Templates\pdf-watermark.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.Templates.pdf-watermark.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\Templates\pdf-text-stamp.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.Templates.pdf-text-stamp.json</LogicalName>
+    </EmbeddedResource>
+    <!-- V1.0.0.27：智能体调用技能包（file-stamp-watermark），随软件释放到 运行组件\智能体调用\file-stamp-watermark\，
+         用户无需单独下载/安装技能包，运行一次 EXE 即自动就位；智能体读取该技能包即可按技能工作流执行 -->
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\SKILL.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.SKILL.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\references\task-spec.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.references.task-spec.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\references\workflows.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.references.workflows.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\references\boundary.md">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.references.boundary.md</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\assets\pdf-stamp.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.assets.pdf-stamp.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\assets\pdf-watermark.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.assets.pdf-watermark.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\assets\pdf-text-stamp.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.assets.pdf-text-stamp.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\assets\img-watermark.json">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.assets.img-watermark.json</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\scripts\find_exe.py">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.scripts.find_exe.py</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\scripts\list_seals.py">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.scripts.list_seals.py</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\scripts\run_task.py">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.scripts.run_task.py</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Docs\SkillPackage\file-stamp-watermark\scripts\seal_info.py">
+      <LogicalName>PDFQFZ.WebShell.Docs.SkillPackage.scripts.seal_info.py</LogicalName>
+    </EmbeddedResource>
+    <!-- V1.0.0.34：移除内嵌真实公章（正式版默认不携带任何印章） -->
+    <EmbeddedResource Include="..\WebUI\prototype\index.html">
+      <LogicalName>PDFQFZ.WebShell.webui.index.html</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\bridge.js">
+      <LogicalName>PDFQFZ.WebShell.webui.bridge.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\stampActions.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.stampActions.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\sealLib.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.sealLib.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\batchActions.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.batchActions.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\uiLayout.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.uiLayout.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\configPersist.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.configPersist.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\watermark.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.watermark.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\imageWatermark.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.imageWatermark.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\badge.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.badge.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\modules\theme.js">
+      <LogicalName>PDFQFZ.WebShell.webui.modules.theme.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\vendor\localforage.min.js">
+      <LogicalName>PDFQFZ.WebShell.webui.vendor.localforage.min.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\lib\vue.global.prod.js">
+      <LogicalName>PDFQFZ.WebShell.webui.lib.vue.global.prod.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\lib\element-plus.min.js">
+      <LogicalName>PDFQFZ.WebShell.webui.lib.element-plus.min.js</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\lib\element-plus.css">
+      <LogicalName>PDFQFZ.WebShell.webui.lib.element-plus.css</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\WebUI\prototype\lib\icons.iife.min.js">
+      <LogicalName>PDFQFZ.WebShell.webui.lib.icons.iife.min.js</LogicalName>
+    </EmbeddedResource>
+
+  </ItemGroup>
+  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+</Project>

@@ -1,0 +1,39 @@
+{
+  "_说明": "任务类型：按文字盖章（在 PDF 中出现指定文字的页面上盖章）。必改字段：① input = 用户提供的源文件夹路径（可为单个路径或数组：数组=多个文件夹一次处理，同类型任务一个 JSON）；② stamp.image = 用户印章图片的绝对路径；③ textStamp.keyword = 用户要求的盖章文字（不改则按'XX公司'搜索，找不到会输出 0 个章但任务仍显示成功，务必按用户提供的内容修改）。印章尺寸/透明度/旋转不填时按软件中该章的已配置参数执行；random/texture 系列为'开启随机角度位移/盖章渲染'时的默认值，用户不同意可逐项指定；texturePresetIndex 为渲染方案（0 自定义，1-4 方案N，默认 0，用户指定方案时填写对应数字）；全部字段含义见《智能体调用手册》第四节。修改后请另存为新的 .json 文件再调用，不要覆盖本模板。",
+  "task": "pdf-text-stamp",
+  "input": "D:\\请改为源文件夹路径",
+  "stamp": {
+    "image": "D:\\请改为印章图片路径",
+    "randomParams": false,
+    "randomRotation": 45,
+    "randomOffsetXMm": 10,
+    "randomOffsetYMm": 10,
+    "textureQuality": false,
+    "textureBrightness": 15,
+    "textureBlob": 5,
+    "textureGradient": 10,
+    "textureWhite": 15,
+    "textureSpot": 15,
+    "textureRadial": 15,
+    "textureCast": 0,
+    "texturePresetIndex": 0
+  },
+  "textStamp": {
+    "keyword": "请改为盖章文字",
+    "ctxRange": 10,
+    "matchMode": "all",
+    "ignoreSpace": false,
+    "offset": {
+      "x": 0,
+      "y": 0
+    }
+  },
+  "output": {
+    "dpi": 150,
+    "mark": "已处理V",
+    "pos": "after",
+    "seq": "num",
+    "pad": 1,
+    "ts": false
+  }
+}
