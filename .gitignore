@@ -302,3 +302,6 @@ PDFQFZ.WPF/app_icon_raw.png
 # V1.0.0.51：版本备份目录/文件不入库（保留工作区供回退，防线上泄漏）
 .v*bak/
 *.v*bak
+
+# 本地工作文件不入库（agent 行为规范等，2026-10-16 起）
+AGENTS.md
