@@ -764,6 +764,22 @@ button,input,select,textarea{font-family:inherit}
                   </div>
                 </el-tooltip>
               </div>
+              <div class="row">
+                <label style="white-space:nowrap">首页章宽</label>
+                <el-tooltip content="开启后首页骑缝章按右侧比例放大（5%~45%）" placement="top">
+                  <el-switch v-model="seamFirstEnabled"></el-switch>
+                </el-tooltip>
+                <el-tooltip v-if="seamFirstEnabled" content="首页骑缝章宽度占章总宽百分比（5%~45%），越大首页章越明显，中间页相应变窄" placement="top">
+                  <el-input-number v-if="seamFirstEnabled" v-model="seamFirstRatio" :min="5" :max="45" controls-position="right" style="width:88px;margin-left:8px"></el-input-number>
+                </el-tooltip>
+                <label style="white-space:nowrap;margin-left:14px">尾页章宽</label>
+                <el-tooltip content="开启后尾页骑缝章按右侧比例放大（5%~45%）" placement="top">
+                  <el-switch v-model="seamLastEnabled"></el-switch>
+                </el-tooltip>
+                <el-tooltip v-if="seamLastEnabled" content="尾页骑缝章宽度占章总宽百分比（5%~45%），越大尾页章越明显，中间页相应变窄" placement="top">
+                  <el-input-number v-if="seamLastEnabled" v-model="seamLastRatio" :min="5" :max="45" controls-position="right" style="width:88px;margin-left:8px"></el-input-number>
+                </el-tooltip>
+              </div>
               </div>
               <!-- 分区3 图章去白（二级标题，可折叠，启用按钮同随机角度位移/盖章渲染） -->
               <div class="sect-block" id="navsect-stamp-white">
@@ -1492,6 +1508,8 @@ const app = createApp({
       bannerPos:null, _sealParamWarned:false,
       sealSize:44, rotation:0, opacity:100,
       sealPos:'右', posVal:'50%', segCount:20, seamType:'1',
+      /* V1.1.0.3：骑缝章首/尾页章宽可配置（开关+占比%默认15） V1.1.0.4：默认20、范围5~45 */
+      seamFirstEnabled:true, seamFirstRatio:20, seamLastEnabled:true, seamLastRatio:20,
       /* v2.4.0.52：骑缝章预览——全量切片布局 + 基准章图（GetSeamPreview） */
       seamAll:[], seamBase:{url:'',w:0,h:0}, _seamTimer:null, _seamSeq:0,
       removeWhite:false, tolerance:'30',
@@ -1518,7 +1536,7 @@ const app = createApp({
       logs:[],
       opHint:'拖入文件或文件夹开始', /* V1.0.0.83：初始提示支持拖入 PDF/图片/文件夹（原「拖入 PDF 文件开始」过窄） */
       genMerging:false, /* V1.0.0.78：文件生成中（合并写盘阶段）动态点点点——generate-progress 文案以「文件生成中」开头置 true，generate-done 复位 */
-      pageStamps:[], pageStampsRight:[], pagePts:595, dlgBatchDel:false, batchDelShowSingle:false, batchDel:null, dlgRange:false, helpOpen:false, aboutOpen:false, dlgCustomTitle:false, customTitleText:'', _tealClicks:0, dlgOps:false, dlgRename:false, renameVal:'', renameSrc:'', versionStr:'1.1.0', badgeEnabled:false, badgeDebug:false, badgeLevel:0, badgeIconsHtml:'', badgeNeedNext:0, badgeData:{totalStampCount:0,totalWatermarkCount:0,totalImageWatermarkCount:0,lastLevel:0}, enableTheme:false, themeColor:'blue', enableCustomTitle:false,
+      pageStamps:[], pageStampsRight:[], pagePts:595, dlgBatchDel:false, batchDelShowSingle:false, batchDel:null, dlgRange:false, helpOpen:false, aboutOpen:false, dlgCustomTitle:false, customTitleText:'', _tealClicks:0, dlgOps:false, dlgRename:false, renameVal:'', renameSrc:'', versionStr:'1.2.0', badgeEnabled:false, badgeDebug:false, badgeLevel:0, badgeIconsHtml:'', badgeNeedNext:0, badgeData:{totalStampCount:0,totalWatermarkCount:0,totalImageWatermarkCount:0,lastLevel:0}, enableTheme:false, themeColor:'blue', enableCustomTitle:false,
       batchPreviewMode:false, batchPreviewed:[], segAuto:true, segDraft:'自动', // V368：分割数默认自动（单文件/文件夹/启动统一；切手动用 segCount，去 500 默认）；V1.0.0.69：segDraft 输入框显示值（自动/数字，支持手动输入）
       preset:0,
       tex:{brightness:20,gradient:10,pressure:20,blob:20,blobSize:10,hue:0,white:20}, /* V1.0.0.83：盖章渲染默认值=用户确认（明暗20/渐变10/径向20/内部斑点20/斑点大小10/色偏0/局部露白20） */
@@ -1640,6 +1658,7 @@ const app = createApp({
 <li>位置：右 / 左 / 上 / 下；</li>
 <li>位置百分比：默认 50%；</li>
 <li>分割数：默认「自动」按文档页数自动调整，可手动修改数字。</li>
+<li>首页章宽 / 尾页章宽：开启后分别设置首页、尾页骑缝章占章总宽的百分比（5%~45%，默认 20%，首页+尾页合计不超过 90%）。页数较多的文档建议开启并调大比例，避免首页、尾页章过窄不可见。</li>
 </ul>
 <p><b>注意事项：</b>同一 PDF 内竖向页面与横向页面并存时，软件按现实盖章效果自动换算方向：竖向页骑缝在右 → 横向页骑缝在下（竖右横下、竖下横左、竖左横上、竖上横右）。</p>
 <div class="h">6.4 指定范围页批量盖章</div>
@@ -1807,6 +1826,7 @@ const app = createApp({
 <div class="qa"><b>Q：图片能盖印章吗？</b><p>A：不能。图片模式仅支持文字水印，需要盖章请转为 PDF 文件导入。</p></div>
 <div class="qa"><b>Q：印章有白底怎么办？</b><p>A：在左侧导航选中「印章参数 → 去白」，调整容差去除白色背景。</p></div>
 <div class="qa"><b>Q：选了骑缝章，但是页面上看不到，是怎么回事？</b><p>A：骑缝章是按分割数进行分割的，如果文件页数较多，按自动分割会将骑缝章分割的很小，接近于看不到；可以手动将分割数调整为150-200左右。</p></div>
+<div class="qa"><b>Q：文件页数较多时，首尾部分页面的骑缝章看不到，是怎么回事？怎么解决？</b><p>A：文件页数较多时，骑缝章按页均分后会变得很窄，加上印章图片内边缘本身有空白，首尾部分页面骑缝章可能会不可见。可在「印章参数 → 骑缝章」开启「首页章宽 / 尾页章宽」，并设置数值（默认 20%），即可解决此问题。</p></div>
 <div class="qa"><b>Q：水印文字如何换行？如何调整大小？</b><p>A：双击水印框编辑文字，Enter 换行；文字超出框宽也会自动换行。拖动水印框、调整框大小，文字会随之自动调整大小。</p></div>
 <div class="qa"><b>Q：如何快速添加水印框？如何快速添加多个重复的水印框？</b><p>A：制作好水印框后，可以对水印框右键，保存当前水印框，后续就可以直接添加到页面；对水印框可以通过快捷键 Ctrl+C、V，或者鼠标右键复制粘贴水印框，快速添加多个重复的水印框。</p></div>
 <div class="qa"><b>Q：印章旋转后被切角是怎么回事？</b><p>A：部分非圆形印章，或印章在图片上不居中时，旋转时会被切边；建议在图片中给印章四边留空区域大一些，可避免旋转时裁切边缘；留白越大，相同尺寸下章内容显示越小，需自行调大印章尺寸。</p></div>
@@ -2108,6 +2128,9 @@ const app = createApp({
     /* v2.4.0.52：骑缝章预览——参数/印章/渲染页 pt 变化重算布局 */
     seamType(){ this._seamSync(); }, sealPos(){ this._seamSync(); }, posVal(){ this._seamSync(); },
     segCount(){ this._seamSync(); this.segDraft=this.segAuto?'自动':String(this.segCount||0); }, pagePts(){ this._seamSync(); }, curPage(){ this._seamSync(); }, /* V2.4.0.162：水印框是全局的，翻页不重新加载 */
+    /* V1.1.0.3：骑缝章首/尾页章宽——变化即保存参数并重算预览 */
+    seamFirstEnabled(){ this.saveStampParams(); this._seamSync(); }, seamFirstRatio(){ this.saveStampParams(); this._seamSync(); },
+    seamLastEnabled(){ this.saveStampParams(); this._seamSync(); }, seamLastRatio(){ this.saveStampParams(); this._seamSync(); },
     segAuto(){ this.segDraft=this.segAuto?'自动':String(this.segCount||0); this._seamSync(); }, /* V1.0.0.69：自动/手动切换同步输入框显示值并重算骑缝章预览 */
     /* V2.4.0.96：选中框参数变化（含拖拽几何）→ 防抖持久化后端；颜色 setter 也走此链 */
     // wmSel watch 已删除（输出时统一用 ReplaceAllWatermarks）

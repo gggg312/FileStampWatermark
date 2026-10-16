@@ -524,14 +524,16 @@ window.PdfqModules.stampActions = {
       // V2.4.0.80：参数去重——参数组合（总页/类型/位置/百分比/分割数/页 pt）未变且已有结果时跳过，
       // 翻页/折叠/切视图等重复触发不再重拉 GetSeamPreview（后端每次重生成基准图+重算布局）；
       // 前端按 curPage 过滤的切片 computed 不受影响（布局与当前页无关，翻页无需重拉）。
-      const key=[this.curFile||'',this.pageCount||1,qfz,wz,wv,ms,ptW,ptH].join('|'); // V2.4.0.92：key 加文档标识——换文档（含内容相同页数相同）强制重拉，修复骑缝章预览不刷新
+      const key=[this.curFile||'',this.pageCount||1,qfz,wz,wv,ms,ptW,ptH,
+        this.seamFirstEnabled?1:0, this.seamFirstRatio, this.seamLastEnabled?1:0, this.seamLastRatio].join('|'); // V1.1.0.3：key 加首/尾章宽，参数变化强制重拉
       if(this._seamLastKey===key){ return; }
       this._seamLastKey=key;
       clearTimeout(this._seamTimer);
       this._seamTimer=setTimeout(()=>{
         if(!this.pdfLoaded || String(this.seamType)==='1'){ this.seamAll=[]; this.seamBase={url:'',w:0,h:0}; this._seamLastKey=''; return; } // V2.4.0.92：清空同时重置去重键
         const seq=++this._seamSeq;
-        window.Bridge.invoke('GetSeamPreview', this.pageCount||1, qfz, wz, wv, ms, ptW, ptH).then(function(json){
+        window.Bridge.invoke('GetSeamPreview', this.pageCount||1, qfz, wz, wv, ms, ptW, ptH,
+          this.seamFirstEnabled?1:0, parseInt(this.seamFirstRatio)||15, this.seamLastEnabled?1:0, parseInt(this.seamLastRatio)||15).then(function(json){
           if(seq!==self._seamSeq){ return; }
           let r={}; try{ r=JSON.parse(json); }catch(e){}
           if(!r.ok){ self.seamAll=[]; self._seamLastKey=''; return; } // V2.4.0.92：失败清空同时重置去重键，下次参数变化重试

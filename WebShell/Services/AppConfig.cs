@@ -1118,6 +1118,10 @@ namespace PDFQFZ.WPF.Services
             public bool RemoveWhite = false; // 去除白色背景
             public int Tolerance = 20;       // 容差
             public int MaxSplit = 500;       // 骑缝章最大分割数（随印章记忆，默认500）
+            public bool SeamFirstEnabled = true; // V1.1.0.3：骑缝章首页章宽开关（默认开）
+            public int SeamFirstRatio = 20;      // V1.1.0.3：骑缝章首页章宽占比 %  V1.1.0.4：默认20、范围5~45
+            public bool SeamLastEnabled = true;  // V1.1.0.3：骑缝章尾页章宽开关（默认开）
+            public int SeamLastRatio = 20;       // V1.1.0.3：骑缝章尾页章宽占比 %  V1.1.0.4：默认20、范围5~45
             public bool TextureQuality = false; // 盖章渲染（勾选后按四维上限随机生成印泥质感）
             public int TextureBrightness = 20;  // 明暗强度上限 0-100  V1.0.0.83：默认 20（用户确认值）
             public int TextureBlob = 10;        // 斑块大小上限 0-100  V1.0.0.83：默认 10
@@ -1175,6 +1179,10 @@ namespace PDFQFZ.WPF.Services
                 p.RemoveWhite = ini.GetIniInt(sec, "removeWhite", 0) == 1;
                 p.Tolerance = ini.GetIniInt(sec, "tolerance", p.Tolerance);
                 p.MaxSplit = ini.GetIniInt(sec, "maxSplit", p.MaxSplit);
+                p.SeamFirstEnabled = ini.GetIniInt(sec, "seamFirstEnabled", p.SeamFirstEnabled ? 1 : 0) == 1;
+                p.SeamFirstRatio = ini.GetIniInt(sec, "seamFirstRatio", p.SeamFirstRatio);
+                p.SeamLastEnabled = ini.GetIniInt(sec, "seamLastEnabled", p.SeamLastEnabled ? 1 : 0) == 1;
+                p.SeamLastRatio = ini.GetIniInt(sec, "seamLastRatio", p.SeamLastRatio);
                 p.TextureQuality = ini.GetIniInt(sec, "textureQuality", 0) == 1;
                 p.TextureBrightness = ini.GetIniInt(sec, "textureBrightness", p.TextureBrightness);
                 p.TextureBlob = ini.GetIniInt(sec, "textureBlob", p.TextureBlob);
@@ -1239,6 +1247,10 @@ namespace PDFQFZ.WPF.Services
                 ini.WriteIniInt(sec, "removeWhite", p.RemoveWhite ? 1 : 0);
                 ini.WriteIniInt(sec, "tolerance", p.Tolerance);
                 if (p.MaxSplit > 0) ini.WriteIniInt(sec, "maxSplit", p.MaxSplit);
+                ini.WriteIniInt(sec, "seamFirstEnabled", p.SeamFirstEnabled ? 1 : 0);
+                ini.WriteIniInt(sec, "seamFirstRatio", p.SeamFirstRatio);
+                ini.WriteIniInt(sec, "seamLastEnabled", p.SeamLastEnabled ? 1 : 0);
+                ini.WriteIniInt(sec, "seamLastRatio", p.SeamLastRatio);
                 ini.WriteIniInt(sec, "textureQuality", p.TextureQuality ? 1 : 0);
                 ini.WriteIniInt(sec, "textureBrightness", p.TextureBrightness);
                 ini.WriteIniInt(sec, "textureBlob", p.TextureBlob);

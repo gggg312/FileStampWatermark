@@ -173,6 +173,11 @@ namespace PDFQFZ.WebShell.Services
                     ["removeWhite"] = p.RemoveWhite,
                     ["tolerance"] = p.Tolerance,
                     ["maxSplit"] = p.MaxSplit,
+                    // V1.1.0.3：骑缝章首/尾页章宽可配置
+                    ["seamFirstEnabled"] = p.SeamFirstEnabled,
+                    ["seamFirstRatio"] = p.SeamFirstRatio,
+                    ["seamLastEnabled"] = p.SeamLastEnabled,
+                    ["seamLastRatio"] = p.SeamLastRatio,
                     ["textureQuality"] = p.TextureQuality,
                     ["textureBrightness"] = p.TextureBrightness,
                     ["textureBlob"] = p.TextureBlob,
@@ -213,6 +218,11 @@ namespace PDFQFZ.WebShell.Services
                 p.Tolerance = GetInt(d, "tolerance", p.Tolerance);
                 p.MaxSplit = GetInt(d, "maxSplit", p.MaxSplit);
                 if (p.MaxSplit <= 0) p.MaxSplit = -1; // 自动重置（未手动修改）不写入记忆，对齐 WPF MaxSplit=-1 语义
+                // V1.1.0.3：骑缝章首/尾页章宽可配置
+                p.SeamFirstEnabled = GetBool(d, "seamFirstEnabled", p.SeamFirstEnabled);
+                p.SeamFirstRatio = GetInt(d, "seamFirstRatio", p.SeamFirstRatio);
+                p.SeamLastEnabled = GetBool(d, "seamLastEnabled", p.SeamLastEnabled);
+                p.SeamLastRatio = GetInt(d, "seamLastRatio", p.SeamLastRatio);
                 p.TextureQuality = GetBool(d, "textureQuality", p.TextureQuality);
                 p.TextureBrightness = GetInt(d, "textureBrightness", p.TextureBrightness);
                 p.TextureBlob = GetInt(d, "textureBlob", p.TextureBlob);

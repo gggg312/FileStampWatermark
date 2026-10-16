@@ -361,6 +361,9 @@ namespace PDFQFZ.WebShell.Services
                         RemoveWhite = sp.RemoveWhite, Opacity = sp.Opacity, Rotation = sp.Rotation,
                         OriginalRotationCrop = true, SizeMm = sp.Size, // v2.4.0.76: 固定切边
                         WzType = wzType, WzPercent = wzPercent, MaxSplit = ms, Placements = col,
+                        // V1.1.0.3：骑缝章首/尾页章宽可配置
+                        SeamFirstEnabled = sp.SeamFirstEnabled, SeamFirstRatio = sp.SeamFirstRatio,
+                        SeamLastEnabled = sp.SeamLastEnabled, SeamLastRatio = sp.SeamLastRatio,
                         Watermarks = wmSnap, // V2.4.0.96：文件夹模式文字水印（PDFWatermark 内按 file 过滤）
                         TextureEnabled = sp.TextureQuality,
                         TextureSeed = NewTextureSeed(),
@@ -510,6 +513,9 @@ namespace PDFQFZ.WebShell.Services
                     WzType = wzType,
                     WzPercent = wzPercent,
                     MaxSplit = Math.Max(0, maxSplit), // V390：保留 0=自动语义，由 StampEngine 按该文件页数解析（此前 Math.Max(1,0)=1 → 骑缝章 tmp=0 除零）
+                    // V1.1.0.3：骑缝章首/尾页章宽可配置
+                    SeamFirstEnabled = spG.SeamFirstEnabled, SeamFirstRatio = spG.SeamFirstRatio,
+                    SeamLastEnabled = spG.SeamLastEnabled, SeamLastRatio = spG.SeamLastRatio,
                     Placements = _stampPlacements,
                     Watermarks = _watermarkEnabled ? _watermarks.Snapshot() : null, // V2.4.0.96：文字水印（开关关闭不输出；PDFWatermark 按 sourcepath 过滤）
                     TextureEnabled = spG.TextureQuality,

@@ -26,6 +26,11 @@ namespace PDFQFZ.WPF.Services
         public int WzType;                   // 骑缝章位置 0下/1上/2左/3右
         public int WzPercent;                // 骑缝章位置百分比
         public int MaxSplit;                 // 骑缝章最大分割数
+        // V1.1.0.3：骑缝章首/尾页章宽可配置（占章总宽 %，0-100；关闭=回退旧保底逻辑）  V1.1.0.4：默认20、范围5~45
+        public bool SeamFirstEnabled = true; // 首页章宽开关
+        public int SeamFirstRatio = 20;      // 首页章宽占比 %
+        public bool SeamLastEnabled = true;  // 尾页章宽开关
+        public int SeamLastRatio = 20;       // 尾页章宽占比 %
         public StampPlacementCollection Placements;   // 页面章放置集合
         // V2.4.0.96：文字水印框列表（预览放置的水印框快照；null/空 = 不加文字水印，与盖章互不干扰）
         public List<WatermarkBox> Watermarks;
@@ -204,7 +209,7 @@ namespace PDFQFZ.WPF.Services
                             tmp++;
                         }
                         if (tmp <= 0) { startIndex += tmp; continue; } // V390：该段无切片跳过（对齐预览），防 subImages 除零
-                        nImage = subImages(seamImage, tmp);
+                        nImage = subImages(seamImage, tmp, opt.SeamFirstEnabled, opt.SeamFirstRatio, opt.SeamLastEnabled, opt.SeamLastRatio);
                         for (int y = 0; y < tmp; y++)
                         {
                             int page = qfzList[startIndex + y];
@@ -1197,29 +1202,23 @@ namespace PDFQFZ.WPF.Services
             return dsImage;
         }
 
-        private static Bitmap[] subImages(Bitmap img, int n)
+        /// <summary>均分切片。V1.1.0.3：宽度分配统一走 PDFQFZ.Library.SeamLayoutCalculator.SliceWidths（与预览端完全一致，
+        /// 所见即所得）；首/尾章宽可配置，全关=旧逻辑零回归。自章右向左切片。每片保底 1px，源矩形钳制防越界。</summary>
+        private static Bitmap[] subImages(Bitmap img, int n, bool firstEnabled, int firstRatio, bool lastEnabled, int lastRatio)
         {
             if (n < 1) return new Bitmap[0]; // V390：防御 n=0 时 (W-w1)/0 除零（段划分已跳过，此处双保险）
             Bitmap[] nImage = new Bitmap[n];
             int H = img.Height;
             int W = img.Width;
-            /* V1.0.0.68：均分切片（用户要求平均分布，不再首片 W/3 大、末片剩余大、中间小）；超长文档（如 1023 页、分割数自动=页数）
-               中间片整数除法归 0 时保底 1px（用户实测"骑缝章只盖第 1 页和最后一页"），源矩形钳制防越界
-               V1.0.0.69：首页切片保底章宽/20——n≤20 均分天然满足；n>20 首页放大到 W/20 保证首页永远可见骑缝章，
-               其余 n-1 片均分剩余宽（余数均匀分配到前几片，避免末片吸收余数偏大）；n==1 整章 */
             if (n <= 1) { return new Bitmap[] { (Bitmap)img.Clone() }; }
-            int wAvg = W / n; if (wAvg < 1) wAvg = 1;
-            int nFirst = W / 20; if (nFirst < 1) nFirst = 1;
-            if (nFirst < wAvg) nFirst = wAvg;
-            if (nFirst > W) nFirst = W;
-            int wBase = (W - nFirst) / (n - 1); if (wBase < 1) wBase = 1;
-            int rem = (W - nFirst) - wBase * (n - 1);
+
+            int[] widths = PDFQFZ.Library.SeamLayoutCalculator.SliceWidths(W, n, firstEnabled, firstRatio, lastEnabled, lastRatio);
+
+            // 从右向左累计切片（对齐旧逻辑）
             int tmpw = W;
             for (int i = 0; i < n; i++)
             {
-                int sw;
-                if (i == 0) sw = nFirst;
-                else sw = wBase + ((i - 1) < rem ? 1 : 0);
+                int sw = widths[i];
                 if (sw > tmpw) sw = tmpw > 0 ? tmpw : 1;
                 int srcX = W - tmpw;
                 if (srcX < 0) srcX = 0;

@@ -285,7 +285,8 @@ namespace PDFQFZ.WebShell.Services
         /// 参数与 GenerateFiles 同源（qfzType/wzType/wzPercent/maxSplit；wzType：0下/1上/2左/3右）；
         /// pageWPt/pageHPt 为前端当前渲染页 pt 尺寸（统一用于各页比例，与预览显示自洽）。
         /// 返回 {ok,baseUrl,baseW,baseH,layout:[{page,x,y,w,h,srcX,srcY,srcW,srcH,rotated}]}，坐标为 0-1 比例。</summary>
-        public string GetSeamPreview(int pageCount, int qfzType, int wzType, int wzPercent, int maxSplit, int pageWPt, int pageHPt)
+        public string GetSeamPreview(int pageCount, int qfzType, int wzType, int wzPercent, int maxSplit, int pageWPt, int pageHPt,
+            int seamFirstEnabled, int seamFirstRatio, int seamLastEnabled, int seamLastRatio)
         {
             try
             {
@@ -314,7 +315,10 @@ namespace PDFQFZ.WebShell.Services
                     TextureSpot = sp.TextureSpot, TextureRadial = sp.TextureRadial, TextureCast = sp.TextureCast,
                     TextureKb = NewTextureK(), TextureKblob = NewTextureK(), TextureKgrad = NewTextureK(),
                     TextureKwhite = NewTextureK(), TextureKspot = NewTextureK(),
-                    TextureKradial = NewTextureK(), TextureKcast = NewTextureK()
+                    TextureKradial = NewTextureK(), TextureKcast = NewTextureK(),
+                    // V1.1.0.3：骑缝章首/尾页章宽可配置（预览用前端传入值，与 config 写盘时序解耦，即时生效）
+                    SeamFirstEnabled = seamFirstEnabled != 0, SeamFirstRatio = Math.Max(1, seamFirstRatio),
+                    SeamLastEnabled = seamLastEnabled != 0, SeamLastRatio = Math.Max(1, seamLastRatio)
                 };
                 if (!StampEngine.PrepareStampResources(options, out Bitmap seamImage, out float xzbl, _ => { }))
                     return "{\"ok\":false,\"error\":\"印章准备失败，请检查印章图片\"}";
@@ -350,6 +354,7 @@ namespace PDFQFZ.WebShell.Services
                 catch { }
                 var layout = PDFQFZ.Library.SeamLayoutCalculator.Compute(
                     Math.Max(1, pageCount), qfzType, wzType, wzPercent, (maxSplit <= 0 ? Math.Max(1, pageCount) : Math.Max(1, maxSplit)),
+                    seamFirstEnabled != 0, Math.Max(1, seamFirstRatio), seamLastEnabled != 0, Math.Max(1, seamLastRatio),
                     sp.Size, baseW, baseH, xzbl, stampedPages,
                     p => (p >= 1 && p <= pageCount && pageSizes[p].W > 0) ? pageSizes[p] : (pW, pH),
                     p => (p >= 1 && p <= pageCount) ? pageRots[p] : 0);

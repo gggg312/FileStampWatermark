@@ -50,6 +50,11 @@ window.PdfqModules.configPersist = {
       if(p.rotation!==undefined) this.rotation=p.rotation;
       if(p.opacity!==undefined) this.opacity=p.opacity;
       if(p.maxSplit!==undefined) this.segCount=p.maxSplit;
+      // V1.1.0.3：骑缝章首/尾页章宽可配置  V1.1.0.4：加载时夹紧到 5~45（防旧配置越界）
+      if(p.seamFirstEnabled!==undefined) this.seamFirstEnabled=!!p.seamFirstEnabled;
+      if(p.seamFirstRatio!==undefined) this.seamFirstRatio=Math.min(45,Math.max(5,p.seamFirstRatio));
+      if(p.seamLastEnabled!==undefined) this.seamLastEnabled=!!p.seamLastEnabled;
+      if(p.seamLastRatio!==undefined) this.seamLastRatio=Math.min(45,Math.max(5,p.seamLastRatio));
       if(p.removeWhite!==undefined) this.removeWhite=!!p.removeWhite;
       if(p.tolerance!==undefined) this.tolerance=p.tolerance;
       if(p.randomParams!==undefined) this.randEnabled=!!p.randomParams;
@@ -115,6 +120,11 @@ window.PdfqModules.configPersist = {
         rotation: parseInt(this.rotation)||0,
         opacity: parseInt(this.opacity)||60,
         maxSplit: this._segModified ? (parseInt(this.segCount)||500) : -1,
+        // V1.1.0.3：骑缝章首/尾页章宽可配置  V1.1.0.4：默认20，夹紧5~45
+        seamFirstEnabled: !!this.seamFirstEnabled,
+        seamFirstRatio: Math.min(45,Math.max(5,parseInt(this.seamFirstRatio)||20)),
+        seamLastEnabled: !!this.seamLastEnabled,
+        seamLastRatio: Math.min(45,Math.max(5,parseInt(this.seamLastRatio)||20)),
         removeWhite: !!this.removeWhite,
         tolerance: parseInt(this.tolerance)||20,
         randomParams: !!this.randEnabled,

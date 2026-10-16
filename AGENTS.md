@@ -31,3 +31,4 @@
 - 发布流程：生成发布版 → 在 main 上追加一个"发布 x.x.x" commit（树 = 该发布代码状态）+ 打 tag vx.x.x → push main 与 tag 到双远程。
 - push 前检查：`git log --oneline main` 应只看到发布节点；确认调试历史只在本地（`main-full`）。任何情况下不得 `git push origin main-full`、`git push gitee main-full` 或把调试历史并入 main。
 - 仓库级文档（AGENTS.md/README 等）的内容修订先在 main-full 提交，随下次发布 commit 一并上线上；不得在 main 上单独新增非发布 commit。
+- README 等文档确需立即上线（如赞助信息）时，**只能合并为一个简短的「更新 README」 commit** 再推双远程：不得拆成多个细碎 commit，commit message 不写改动明细（如"赞赏码缩小/改名"之类一律不出现）。

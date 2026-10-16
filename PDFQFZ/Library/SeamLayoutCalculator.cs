@@ -18,6 +18,67 @@ namespace PDFQFZ.Library
 
     public static class SeamLayoutCalculator
     {
+        /// <summary>V1.1.0.3：骑缝章切片宽度分配（纯数学）。预览(Compute)与输出(StampEngine.subImages)共用，
+        /// 保证所见即所得。首/尾开关全关=旧逻辑（首页保底 W/20，其余 n-1 片均分）；任一开启时首页=firstRatio%、
+        /// 尾页=lastRatio%（未开的那端回退旧行为）。总和恒等于 W（整除余数均匀分配到前几片）。</summary>
+        public static int[] SliceWidths(int W, int n, bool firstEnabled, int firstRatio, bool lastEnabled, int lastRatio)
+        {
+            if (n < 1) return new int[0];
+            if (n == 1) return new int[] { Math.Max(1, W) };
+            var widths = new int[n];
+            if (!firstEnabled && !lastEnabled)
+            {
+                // 旧逻辑（零回归）
+                int wAvg = W / n; if (wAvg < 1) wAvg = 1;
+                int nFirst = W / 20; if (nFirst < 1) nFirst = 1;
+                if (nFirst < wAvg) nFirst = wAvg;
+                if (nFirst > W) nFirst = W;
+                int wBase = (W - nFirst) / (n - 1); if (wBase < 1) wBase = 1;
+                int rem = (W - nFirst) - wBase * (n - 1);
+                widths[0] = nFirst;
+                for (int i = 1; i < n; i++) widths[i] = wBase + ((i - 1) < rem ? 1 : 0);
+            }
+            else
+            {
+                int firstW;
+                if (firstEnabled) firstW = Math.Max(1, (int)Math.Round(W * Math.Max(0, firstRatio) / 100.0));
+                else firstW = W / 20; // 未开=旧首页保底
+                if (firstW < 1) firstW = 1;
+                if (firstW > W) firstW = W;
+                widths[0] = firstW;
+                int remainingAfterFirst = W - firstW;
+                if (n == 2)
+                {
+                    widths[1] = Math.Max(1, remainingAfterFirst); // 两页：末页吃剩余
+                }
+                else
+                {
+                    int lastW;
+                    if (lastEnabled)
+                    {
+                        lastW = Math.Max(1, (int)Math.Round(W * Math.Max(0, lastRatio) / 100.0));
+                        int minMid = n - 2; // 中间每片至少 1px
+                        if (lastW > remainingAfterFirst - minMid) lastW = Math.Max(1, remainingAfterFirst - minMid);
+                    }
+                    else
+                    {
+                        lastW = Math.Max(1, remainingAfterFirst / (n - 1)); // 未开：尾页按中间均分
+                    }
+                    widths[n - 1] = lastW;
+                    int midTotal = remainingAfterFirst - lastW;
+                    int midBase = n - 2 > 0 ? Math.Max(1, midTotal / (n - 2)) : 0;
+                    int midRem = midTotal - midBase * (n - 2);
+                    for (int i = 1; i < n - 1; i++)
+                    {
+                        int sw = midBase + (((i - 1) < midRem) ? 1 : 0);
+                        if (sw < 1) sw = 1;
+                        widths[i] = sw;
+                    }
+                }
+            }
+            return widths;
+        }
+
         /// <summary>计算全部骑缝章页的切片布局。
         /// qfzType：0=每页、1=不加、2=奇数页、3=偶数页、4=已盖章页（stampedPages）；
         /// wzType：0=下、1=上、2=左、3=右（对齐 StampEngine 位置公式）；
@@ -32,6 +93,10 @@ namespace PDFQFZ.Library
             int wzType,
             int wzPercent,
             int maxSplit,
+            bool firstEnabled,
+            int firstRatio,
+            bool lastEnabled,
+            int lastRatio,
             float stampSizeMm,
             int stampW,
             int stampH,
@@ -115,20 +180,14 @@ namespace PDFQFZ.Library
                     startIndex += tmp;
                     continue;
                 }
-                int wAvg = W / tmp; if (wAvg < 1) wAvg = 1;
-                int nFirst = W / 20; if (nFirst < 1) nFirst = 1;
-                if (nFirst < wAvg) nFirst = wAvg;
-                if (nFirst > W) nFirst = W;
-                int wBase = (W - nFirst) / (tmp - 1); if (wBase < 1) wBase = 1;
-                int rem = (W - nFirst) - wBase * (tmp - 1);
+                // V1.1.0.3：切片宽度统一走 SliceWidths（与输出端 subImages 完全一致，所见即所得）
+                int[] widths = SliceWidths(W, tmp, firstEnabled, firstRatio, lastEnabled, lastRatio);
                 int tmpw = W;                        // 剩余宽（自章右向左累计）
 
                 for (int y = 0; y < tmp; y++)
                 {
                     int page = qfzList[startIndex + y];
-                    int sw;
-                    if (y == 0) sw = nFirst;
-                    else sw = wBase + ((y - 1) < rem ? 1 : 0);
+                    int sw = widths[y];
                     if (sw > tmpw) sw = tmpw > 0 ? tmpw : 1;
 
                     float srcX = (float)(W - tmpw) / W;
