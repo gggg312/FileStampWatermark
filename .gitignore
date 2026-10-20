@@ -299,9 +299,23 @@ WebShell/Assets/debug_page.pdf
 PDFQFZ.WPF/Assets/debug_page.pdf
 PDFQFZ.WPF/app_icon_raw.png
 
+# V1.2.0.1 起：本地辅助区整体不入库（2026-10-20 将 交付版本/备份/工具脚本/输出记录/交接文档 归拢至 本地辅助/）
+本地辅助/
+
+# V1.2.0.1 起：入库区 code/ 下，仅源码与合规入库；测试与敏感资源不入库
+code/E2E/
+code/PDFQFZ.Tests/
+code/WebShell/Assets/公章.png
+code/WebShell/Assets/debug_page.pdf
+code/PDFQFZ.WPF/Assets/debug_page.pdf
+code/PDFQFZ.WPF/app_icon_raw.png
+
 # V1.0.0.51：版本备份目录/文件不入库（保留工作区供回退，防线上泄漏）
 .v*bak/
 *.v*bak
 
 # 本地工作文件不入库（agent 行为规范等，2026-10-16 起）
 AGENTS.md
+
+# 项目结构说明（本地工作文档，不入库、不上传，2026-10-20 起）
+项目结构说明.md
